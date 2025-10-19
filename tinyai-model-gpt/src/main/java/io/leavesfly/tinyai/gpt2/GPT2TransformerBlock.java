@@ -48,9 +48,7 @@ public class GPT2TransformerBlock extends Block {
      * @param layerIdx 层索引
      */
     public GPT2TransformerBlock(String name, GPT2Config config, int layerIdx) {
-        super(name, 
-              Shape.of(-1, -1, config.getNEmbd()), 
-              Shape.of(-1, -1, config.getNEmbd()));
+        super(name);
         
         this.config = config;
         this.layerIdx = layerIdx;

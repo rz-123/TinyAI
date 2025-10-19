@@ -54,9 +54,7 @@ public class GPT2Block extends Block {
      * @param config GPT-2配置
      */
     public GPT2Block(String name, GPT2Config config) {
-        super(name, 
-              Shape.of(-1, config.getNPositions()), 
-              Shape.of(-1, config.getNPositions(), config.getVocabSize()));
+        super(name);
         
         this.config = config;
         

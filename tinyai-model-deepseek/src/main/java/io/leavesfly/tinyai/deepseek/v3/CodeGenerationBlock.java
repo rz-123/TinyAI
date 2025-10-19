@@ -93,7 +93,7 @@ public class CodeGenerationBlock extends Block {
      * @param numProgrammingLanguages 支持的编程语言数量
      */
     public CodeGenerationBlock(String name, int dModel, int numProgrammingLanguages) {
-        super(name, Shape.of(-1, dModel), Shape.of(-1, dModel));
+        super(name);
         
         this.dModel = dModel;
         this.numProgrammingLanguages = numProgrammingLanguages;

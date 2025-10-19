@@ -42,7 +42,7 @@ public class TransformerBlock extends Block {
      * @param dropout Dropout比率
      */
     public TransformerBlock(String name, int dModel, int numHeads, int dFF, double dropout) {
-        super(name, Shape.of(-1, -1, dModel), Shape.of(-1, -1, dModel));
+        super(name);
         this.dModel = dModel;
         this.numHeads = numHeads;
         this.dFF = dFF;

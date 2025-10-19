@@ -62,9 +62,7 @@ public class GPT1TransformerBlock extends Layer {
      * @param config GPT-1配置
      */
     public GPT1TransformerBlock(String name, GPT1Config config) {
-        super(name,
-                Shape.of(-1, -1, config.getHiddenSize()),
-                Shape.of(-1, -1, config.getHiddenSize()));
+        super(name);
 
         this.config = config;
         init();

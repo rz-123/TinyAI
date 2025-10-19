@@ -44,9 +44,7 @@ public class GPT2OutputHead extends Layer {
      * @param useBias 是否使用偏置
      */
     public GPT2OutputHead(String name, int nEmbd, int vocabSize, boolean useBias) {
-        super(name, 
-              Shape.of(-1, -1, nEmbd), 
-              Shape.of(-1, -1, vocabSize));
+        super(name);
         
         this.nEmbd = nEmbd;
         this.vocabSize = vocabSize;

@@ -62,8 +62,7 @@ public class Qwen3AttentionBlock extends Block {
      * @param config Qwen3配置
      */
     public Qwen3AttentionBlock(String name, Qwen3Config config) {
-        super(name, Shape.of(-1, -1, config.getHiddenSize()), 
-              Shape.of(-1, -1, config.getHiddenSize()));
+        super(name);
         
         this.config = config;
         this.numHeads = config.getNumAttentionHeads();

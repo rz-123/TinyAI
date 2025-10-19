@@ -53,9 +53,7 @@ public class GPT2TokenEmbedding extends Layer {
      * @param config GPT-2配置
      */
     public GPT2TokenEmbedding(String name, GPT2Config config) {
-        super(name, 
-              Shape.of(-1, config.getNPositions()), 
-              Shape.of(-1, config.getNPositions(), config.getNEmbd()));
+        super(name);
         
         this.config = config;
         this.vocabSize = config.getVocabSize();

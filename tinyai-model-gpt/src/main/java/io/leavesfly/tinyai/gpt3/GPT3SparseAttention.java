@@ -70,7 +70,7 @@ public class GPT3SparseAttention extends Layer {
      * @param config GPT-3配置
      */
     public GPT3SparseAttention(String name, int dModel, int numHeads, int layerIndex, GPT3Config config) {
-        super(name, Shape.of(-1, -1, dModel), Shape.of(-1, -1, dModel));
+        super(name);
         
         if (dModel % numHeads != 0) {
             throw new IllegalArgumentException("dModel必须能被numHeads整除");

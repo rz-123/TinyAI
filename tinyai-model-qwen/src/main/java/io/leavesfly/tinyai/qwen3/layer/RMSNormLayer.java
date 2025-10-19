@@ -41,7 +41,7 @@ public class RMSNormLayer extends Layer {
      * @param eps epsilon值，默认1e-6
      */
     public RMSNormLayer(String name, int hiddenSize, double eps) {
-        super(name, Shape.of(-1, hiddenSize), Shape.of(-1, hiddenSize));
+        super(name);
         this.hiddenSize = hiddenSize;
         this.eps = eps;
         init();

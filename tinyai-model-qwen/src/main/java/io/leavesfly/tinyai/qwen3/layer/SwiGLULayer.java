@@ -41,7 +41,7 @@ public class SwiGLULayer extends Layer {
      * @param outputDim 输出维度
      */
     public SwiGLULayer(String name, int inputDim, int outputDim) {
-        super(name, Shape.of(-1, inputDim), Shape.of(-1, outputDim));
+        super(name);
         this.inputDim = inputDim;
         this.outputDim = outputDim;
         init();

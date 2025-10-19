@@ -88,7 +88,7 @@ public class V3ReasoningBlock extends Block {
      * @param numReasoningSteps 推理步骤数量
      */
     public V3ReasoningBlock(String name, int dModel, int numReasoningSteps) {
-        super(name, Shape.of(-1, -1, dModel), Shape.of(-1, dModel));
+        super(name);
         
         this.dModel = dModel;
         this.numReasoningSteps = numReasoningSteps;

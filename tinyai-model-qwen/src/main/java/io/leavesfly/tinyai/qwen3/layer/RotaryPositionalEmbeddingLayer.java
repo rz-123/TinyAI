@@ -44,7 +44,7 @@ public class RotaryPositionalEmbeddingLayer extends Layer {
      * @param base 基础频率
      */
     public RotaryPositionalEmbeddingLayer(String name, int headDim, int maxPositionEmbeddings, double base) {
-        super(name, Shape.of(-1, -1, -1, headDim), Shape.of(-1, -1, -1, headDim));
+        super(name);
         this.headDim = headDim;
         this.maxPositionEmbeddings = maxPositionEmbeddings;
         this.base = base;

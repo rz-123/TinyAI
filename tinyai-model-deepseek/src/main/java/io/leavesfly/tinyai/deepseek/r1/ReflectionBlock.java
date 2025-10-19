@@ -46,7 +46,7 @@ public class ReflectionBlock extends Block {
      * @param qualityThreshold 质量阈值，低于此值需要改进，默认0.7
      */
     public ReflectionBlock(String name, int dModel, double qualityThreshold) {
-        super(name, Shape.of(-1, dModel * 2), Shape.of(-1, dModel));
+        super(name);
         this.dModel = dModel;
         this.qualityThreshold = qualityThreshold;
         init();

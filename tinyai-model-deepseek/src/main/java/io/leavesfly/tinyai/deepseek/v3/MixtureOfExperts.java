@@ -72,7 +72,7 @@ public class MixtureOfExperts extends Block {
      */
     public MixtureOfExperts(String name, int dModel, int numExperts, int numSelected, 
                            float expertCapacityFactor) {
-        super(name, Shape.of(-1, -1, dModel), Shape.of(-1, -1, dModel));
+        super(name);
         
         this.dModel = dModel;
         this.numExperts = numExperts;

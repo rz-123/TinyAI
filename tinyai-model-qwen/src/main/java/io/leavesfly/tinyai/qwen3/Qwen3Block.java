@@ -61,9 +61,7 @@ public class Qwen3Block extends Block {
      * @param withLMHead 是否包含语言模型头
      */
     public Qwen3Block(String name, Qwen3Config config, boolean withLMHead) {
-        super(name, Shape.of(-1, -1), withLMHead ? 
-              Shape.of(-1, -1, config.getVocabSize()) : 
-              Shape.of(-1, -1, config.getHiddenSize()));
+        super(name);
         
         this.config = config;
         this.withLMHead = withLMHead;

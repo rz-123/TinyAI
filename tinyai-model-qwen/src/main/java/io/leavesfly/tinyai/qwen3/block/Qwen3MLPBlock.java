@@ -53,8 +53,7 @@ public class Qwen3MLPBlock extends Block {
      * @param config Qwen3配置
      */
     public Qwen3MLPBlock(String name, Qwen3Config config) {
-        super(name, Shape.of(-1, -1, config.getHiddenSize()), 
-              Shape.of(-1, -1, config.getHiddenSize()));
+        super(name);
         
         this.config = config;
         this.hiddenSize = config.getHiddenSize();

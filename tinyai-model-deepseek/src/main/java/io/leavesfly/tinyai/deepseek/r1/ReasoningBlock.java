@@ -58,7 +58,7 @@ public class ReasoningBlock extends Block {
      * @param numReasoningSteps 推理步骤数量，默认为5
      */
     public ReasoningBlock(String name, int dModel, int numReasoningSteps) {
-        super(name, Shape.of(-1, -1, dModel), Shape.of(-1, dModel));
+        super(name);
         this.dModel = dModel;
         this.numReasoningSteps = numReasoningSteps;
         init();
@@ -76,7 +76,7 @@ public class ReasoningBlock extends Block {
         if (!alreadyInit) {
             // 思维状态编码器：dModel -> dModel*2 -> dModel
             thoughtEncoderLayer1 = new LinearLayer(name + "_thought_encoder1", dModel, dModel * 2, true);
-            thoughtActivation = new ReLuLayer(name + "_thought_relu", Shape.of(-1, dModel * 2));
+            thoughtActivation = new ReLuLayer(name + "_thought_relu");
             thoughtEncoderLayer2 = new LinearLayer(name + "_thought_encoder2", dModel * 2, dModel, true);
             
             addLayer(thoughtEncoderLayer1);
@@ -85,7 +85,7 @@ public class ReasoningBlock extends Block {
             
             // 行动预测器：dModel -> dModel -> dModel
             actionPredictorLayer1 = new LinearLayer(name + "_action_predictor1", dModel, dModel, true);
-            actionActivation = new ReLuLayer(name + "_action_relu", Shape.of(-1, dModel));
+            actionActivation = new ReLuLayer(name + "_action_relu");
             actionPredictorLayer2 = new LinearLayer(name + "_action_predictor2", dModel, dModel, true);
             
             addLayer(actionPredictorLayer1);
@@ -94,7 +94,7 @@ public class ReasoningBlock extends Block {
             
             // 置信度评估器：dModel -> 64 -> 1
             confidenceLayer1 = new LinearLayer(name + "_confidence1", dModel, 64, true);
-            confidenceActivation = new ReLuLayer(name + "_confidence_relu", Shape.of(-1, 64));
+            confidenceActivation = new ReLuLayer(name + "_confidence_relu");
             confidenceLayer2 = new LinearLayer(name + "_confidence2", 64, 1, true);
             confidenceSigmoid = new SigmoidLayer(name + "_confidence_sigmoid");
             
@@ -105,7 +105,7 @@ public class ReasoningBlock extends Block {
             
             // 验证器：dModel*2 -> dModel -> 1
             verifierLayer1 = new LinearLayer(name + "_verifier1", dModel * 2, dModel, true);
-            verifierActivation = new ReLuLayer(name + "_verifier_relu", Shape.of(-1, dModel));
+            verifierActivation = new ReLuLayer(name + "_verifier_relu");
             verifierLayer2 = new LinearLayer(name + "_verifier2", dModel, 1, true);
             verifierSigmoid = new SigmoidLayer(name + "_verifier_sigmoid");
             

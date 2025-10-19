@@ -89,7 +89,7 @@ public class V3TransformerBlock extends Block {
      */
     public V3TransformerBlock(String name, int dModel, int numHeads, int dFF, 
                              int numExperts, float dropout) {
-        super(name, Shape.of(-1, -1, dModel), Shape.of(-1, -1, dModel));
+        super(name);
         
         this.dModel = dModel;
         this.numHeads = numHeads;

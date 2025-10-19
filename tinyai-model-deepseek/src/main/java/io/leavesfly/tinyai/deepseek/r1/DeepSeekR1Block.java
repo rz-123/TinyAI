@@ -64,7 +64,7 @@ public class DeepSeekR1Block extends Block {
      */
     public DeepSeekR1Block(String name, int vocabSize, int dModel, int numLayers, 
                           int numHeads, int dFF, int maxSeqLen, double dropout) {
-        super(name, Shape.of(-1, maxSeqLen), Shape.of(-1, vocabSize));
+        super(name);
         
         this.vocabSize = vocabSize;
         this.dModel = dModel;

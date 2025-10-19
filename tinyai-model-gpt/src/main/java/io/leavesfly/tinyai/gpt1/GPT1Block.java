@@ -54,9 +54,7 @@ public class GPT1Block extends Block {
      * @param config GPT-1配置
      */
     public GPT1Block(String name, GPT1Config config) {
-        super(name,
-                Shape.of(-1, config.getMaxSequenceLength()),
-                Shape.of(-1, config.getMaxSequenceLength(), config.getVocabSize()));
+        super(name);
 
         this.config = config;
 

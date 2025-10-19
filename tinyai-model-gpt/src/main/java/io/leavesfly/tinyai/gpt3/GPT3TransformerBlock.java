@@ -50,9 +50,7 @@ public class GPT3TransformerBlock extends Block {
      * @param layerIndex 层索引
      */
     public GPT3TransformerBlock(String name, GPT3Config config, int layerIndex) {
-        super(name, 
-              Shape.of(-1, -1, config.getNEmbd()), 
-              Shape.of(-1, -1, config.getNEmbd()));
+        super(name);
         
         this.config = config;
         this.layerIndex = layerIndex;

@@ -49,8 +49,7 @@ public class Qwen3DecoderBlock extends Block {
      * @param config Qwen3配置
      */
     public Qwen3DecoderBlock(String name, Qwen3Config config) {
-        super(name, Shape.of(-1, -1, config.getHiddenSize()), 
-              Shape.of(-1, -1, config.getHiddenSize()));
+        super(name);
         
         this.config = config;
         this.hiddenSize = config.getHiddenSize();

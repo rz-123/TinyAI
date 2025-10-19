@@ -47,7 +47,7 @@ public class GPT3RotaryEmbedding extends Layer {
      * @param base 基础频率（默认10000）
      */
     public GPT3RotaryEmbedding(String name, int rotaryDim, int maxSeqLength, double base) {
-        super(name, Shape.of(-1, maxSeqLength, rotaryDim), Shape.of(-1, maxSeqLength, rotaryDim));
+        super(name);
         
         if (rotaryDim % 2 != 0) {
             throw new IllegalArgumentException("旋转维度必须是偶数");

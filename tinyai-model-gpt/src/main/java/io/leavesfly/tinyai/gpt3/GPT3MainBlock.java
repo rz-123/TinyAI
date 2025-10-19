@@ -52,9 +52,7 @@ class GPT3MainBlock extends Block {
      * 构造GPT-3主块
      */
     public GPT3MainBlock(String name, GPT3Config config) {
-        super(name,
-                Shape.of(-1, config.getNPositions()),
-                Shape.of(-1, config.getNPositions(), config.getVocabSize()));
+        super(name);
 
         this.config = config;
         config.validate();

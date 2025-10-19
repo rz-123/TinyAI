@@ -76,7 +76,7 @@ public class DeepSeekV3Block extends Block {
      */
     public DeepSeekV3Block(String name, int vocabSize, int dModel, int numLayers, 
                           int numHeads, int dFF, int numExperts, int maxSeqLen, float dropout) {
-        super(name, Shape.of(-1, -1), Shape.of(-1, -1, dModel));
+        super(name);
         
         this.vocabSize = vocabSize;
         this.dModel = dModel;

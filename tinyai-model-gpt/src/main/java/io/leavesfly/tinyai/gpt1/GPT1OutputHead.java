@@ -49,9 +49,7 @@ public class GPT1OutputHead extends Layer {
      * @param useBias 是否使用偏置
      */
     public GPT1OutputHead(String name, GPT1Config config, boolean useBias) {
-        super(name, 
-              Shape.of(-1, -1, config.getHiddenSize()), 
-              Shape.of(-1, -1, config.getVocabSize()));
+        super(name);
         
         this.config = config;
         this.useBias = useBias;
