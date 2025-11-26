@@ -17,6 +17,7 @@
         <module>tinyai-deeplearning-nnet</module>
         <module>tinyai-deeplearning-ml</module>
         <module>tinyai-deeplearning-rl</module>
+        <module>tinyai-deeplearning-nl</module>
         <module>tinyai-deeplearning-case</module>
 
         <!--        模型层-->
@@ -85,6 +86,12 @@
             <dependency>
                 <groupId>io.leavesfly.tinyai</groupId>
                 <artifactId>tinyai-deeplearning-rl</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.leavesfly.tinyai</groupId>
+                <artifactId>tinyai-deeplearning-nl</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
