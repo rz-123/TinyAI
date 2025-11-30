@@ -12,34 +12,36 @@
     <!-- 子模块配置 -->
     <modules>
         <!--        深度学习-->
-        <module>tinyai-deeplearning-ndarr</module>
-        <module>tinyai-deeplearning-func</module>
-        <module>tinyai-deeplearning-nnet</module>
-        <module>tinyai-deeplearning-ml</module>
-        <module>tinyai-deeplearning-rl</module>
-        <module>tinyai-deeplearning-nl</module>
-        <module>tinyai-deeplearning-case</module>
+        <module>tinyai-deeplearning/tinyai-deeplearning-ndarr</module>
+        <module>tinyai-deeplearning/tinyai-deeplearning-func</module>
+        <module>tinyai-deeplearning/tinyai-deeplearning-nnet</module>
+        <module>tinyai-deeplearning/tinyai-deeplearning-ml</module>
+        <module>tinyai-deeplearning/tinyai-deeplearning-rl</module>
+        <module>tinyai-deeplearning/tinyai-deeplearning-nl</module>
+        <module>tinyai-deeplearning/tinyai-deeplearning-case</module>
 
         <!--        模型层-->
-        <module>tinyai-model-deepseek</module>
-        <module>tinyai-model-lora</module>
-        <module>tinyai-model-gpt</module>
-        <module>tinyai-model-qwen</module>
-        <module>tinyai-model-moe</module>
+        <module>tinyai-model/tinyai-model-deepseek</module>
+        <module>tinyai-model/tinyai-model-lora</module>
+        <module>tinyai-model/tinyai-model-gpt</module>
+        <module>tinyai-model/tinyai-model-qwen</module>
+        <module>tinyai-model/tinyai-model-moe</module>
 
         <!--        智能体-->
-        <module>tinyai-agent-context</module>
-        <module>tinyai-agent-rag</module>
-        <module>tinyai-agent-multi</module>
-        <module>tinyai-agent-pattern</module>
-        <module>tinyai-agent-evol</module>
-        <module>tinyai-agent-manus</module>
-        <module>tinyai-agent-cursor</module>
-        <module>tinyai-agent-research</module>
-        <module>tinyai-agent-embodied</module>
-        <module>tinyai-agent-embodied-robot</module>
-        <module>tinyai-agent-embodied-vla</module>
-        <module>tinyai-agent-embodied-wm</module>
+        <module>tinyai-agent/tinyai-agent-context</module>
+        <module>tinyai-agent/tinyai-agent-rag</module>
+        <module>tinyai-agent/tinyai-agent-multi</module>
+        <module>tinyai-agent/tinyai-agent-pattern</module>
+        <module>tinyai-agent/tinyai-agent-evol</module>
+        <module>tinyai-agent/tinyai-agent-manus</module>
+        <module>tinyai-agent/tinyai-agent-cursor</module>
+        <module>tinyai-agent/tinyai-agent-research</module>
+
+        <!--        具身智能-->
+        <module>tinyai-embodied/tinyai-agent-embodied</module>
+        <module>tinyai-embodied/tinyai-agent-embodied-robot</module>
+        <module>tinyai-embodied/tinyai-agent-embodied-vla</module>
+        <module>tinyai-embodied/tinyai-agent-embodied-wm</module>
     </modules>
 
     <properties>
@@ -123,19 +125,19 @@
                 <artifactId>tinyai-agent-pattern</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            
+
             <dependency>
                 <groupId>io.leavesfly.tinyai</groupId>
                 <artifactId>tinyai-agent-cursor</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            
+
             <dependency>
                 <groupId>io.leavesfly.tinyai</groupId>
                 <artifactId>tinyai-agent-rag</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            
+
             <dependency>
                 <groupId>io.leavesfly.tinyai</groupId>
                 <artifactId>tinyai-model-qwen</artifactId>
