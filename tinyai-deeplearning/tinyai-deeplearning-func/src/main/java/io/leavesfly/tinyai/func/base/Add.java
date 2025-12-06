@@ -97,8 +97,8 @@ public class Add extends Function {
      */
     @Override
     public List<NdArray> backward(NdArray yGrad) {
-        NdArray gx0 = yGrad;
-        NdArray gx1 = x1Shape.equals(x0Shape) ? yGrad : yGrad.sumTo(x1Shape);
+        NdArray gx0 = x0Shape.equals(yGrad.getShape()) ? yGrad : yGrad.sumTo(x0Shape);
+        NdArray gx1 = x1Shape.equals(yGrad.getShape()) ? yGrad : yGrad.sumTo(x1Shape);
         return Arrays.asList(gx0, gx1);
     }
 

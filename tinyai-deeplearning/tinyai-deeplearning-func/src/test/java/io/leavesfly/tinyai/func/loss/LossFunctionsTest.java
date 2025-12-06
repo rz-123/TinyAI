@@ -60,8 +60,8 @@ public class LossFunctionsTest {
         SoftmaxCE softmaxCEFunc = new SoftmaxCE();
 
         // 测试softmax交叉熵损失
-        NdArray predict = NdArray.of(new float[][]{{2, 1, 3}, {1, 3, 2}});
-        NdArray label = NdArray.of(new float[][]{{2}, {1}}); // 类别标签
+        NdArray predict = NdArray.of(new float[][]{{0, 0, 0}});
+        NdArray label = NdArray.of(new float[][]{{2}}); // 类别标签
 
         NdArray result = softmaxCEFunc.forward(predict, label);
 
@@ -78,6 +78,13 @@ public class LossFunctionsTest {
 
         assertNotNull(pred.getGrad());
         assertEquals(pred.getValue().getShape(), pred.getGrad().getShape());
+
+        // 软标签为 one-hot，梯度应为 (softmax - oneHot)
+        float[][] grad = pred.getGrad().getMatrix();
+        // softmax(0,0,0) = 1/3
+        assertEquals(1f / 3f, grad[0][0], 1e-6);
+        assertEquals(1f / 3f, grad[0][1], 1e-6);
+        assertEquals(-2f / 3f, grad[0][2], 1e-6);
     }
 
     @Test

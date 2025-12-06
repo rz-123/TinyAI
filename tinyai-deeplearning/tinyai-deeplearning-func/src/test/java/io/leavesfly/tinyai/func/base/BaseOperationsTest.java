@@ -326,6 +326,28 @@ public class BaseOperationsTest {
         // scalar的梯度应该是6（2x3矩阵的元素个数）
         assertEquals(6.0f, scalar.getGrad().getNumber().floatValue(), 1e-6);
     }
+
+    @Test
+    public void testBroadcastOperationsReverseOrder() {
+        // 验证当左操作数被广播时梯度也会正确 sumTo
+        Variable scalar = new Variable(NdArray.of(10.0f), "scalar");
+        Variable matrix = new Variable(NdArray.of(new float[][]{{1, 2, 3}, {4, 5, 6}}), "matrix");
+
+        Add addFunc = new Add();
+
+        Variable result = addFunc.call(scalar, matrix);
+        float[][] expected = {{11, 12, 13}, {14, 15, 16}};
+        assertArrayEquals(expected, result.getValue().getMatrix());
+
+        result.backward();
+
+        // matrix 梯度应为 1
+        float[][] expectedMatrixGrad = {{1, 1, 1}, {1, 1, 1}};
+        assertArrayEquals(expectedMatrixGrad, matrix.getGrad().getMatrix());
+        // scalar 梯度应累加为 6
+        assertNotNull(scalar.getGrad());
+        assertEquals(6.0f, scalar.getGrad().getNumber().floatValue(), 1e-6);
+    }
     
     @Test
     public void testNonTrainMode() {

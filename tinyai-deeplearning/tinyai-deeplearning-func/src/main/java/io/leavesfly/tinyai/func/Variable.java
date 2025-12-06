@@ -13,6 +13,7 @@ import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Stack;
@@ -126,7 +127,7 @@ public class Variable implements Serializable {
             this.grad = null;
             return;
         }
-        //初始化为1
+        // 初始化为1
         if (Objects.isNull(grad)) {
             setGrad(NdArray.ones(this.getValue().getShape()));
         }
@@ -134,7 +135,9 @@ public class Variable implements Serializable {
         Function _creator = creator;
         if (!Objects.isNull(_creator)) {
             Variable[] _inputs = _creator.getInputs();
-            List<NdArray> grads = _creator.backward(grad);
+            List<NdArray> grads = _creator.isMultiOutput()
+                    ? buildOutputGradsForMulti(_creator, this)
+                    : _creator.backward(grad);
             if (_inputs.length != grads.size()) {
                 throw new RuntimeException("Variable backward grads size error!");
             }
@@ -183,7 +186,9 @@ public class Variable implements Serializable {
             }
 
             Variable[] inputs = currentCreator.getInputs();
-            List<NdArray> grads = currentCreator.backward(currentVar.getGrad());
+            List<NdArray> grads = currentCreator.isMultiOutput()
+                    ? buildOutputGradsForMulti(currentCreator, currentVar)
+                    : currentCreator.backward(currentVar.getGrad());
 
             if (inputs.length != grads.size()) {
                 throw new RuntimeException("Variable backward grads size error!");
@@ -206,6 +211,25 @@ public class Variable implements Serializable {
                 }
             }
         }
+    }
+
+    /**
+     * 为多输出函数构造上游梯度列表
+     */
+    private List<NdArray> buildOutputGradsForMulti(Function creatorFunc, Variable currentVar) {
+        Variable[] outs = creatorFunc.getOutputs();
+        if (Objects.isNull(outs) || outs.length == 0) {
+            throw new RuntimeException("Multi-output function has no outputs captured.");
+        }
+        List<NdArray> yGrads = new ArrayList<>(outs.length);
+        for (Variable out : outs) {
+            NdArray g = (out == currentVar) ? currentVar.getGrad() : out.getGrad();
+            if (Objects.isNull(g)) {
+                g = NdArray.zeros(out.getValue().getShape());
+            }
+            yGrads.add(g);
+        }
+        return creatorFunc.backwardMulti(yGrads);
     }
 
     /**

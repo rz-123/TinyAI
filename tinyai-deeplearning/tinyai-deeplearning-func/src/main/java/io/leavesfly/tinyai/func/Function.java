@@ -31,6 +31,11 @@ public abstract class Function implements Serializable {
     protected Variable output;
 
     /**
+     * 多输出时的输出数组，单输出场景下与output保持一致
+     */
+    protected Variable[] outputs;
+
+    /**
      * 函数的执行函数，执行函数的前向传播计算并构建计算图
      * <p>
      * 该方法执行以下操作：
@@ -45,15 +50,17 @@ public abstract class Function implements Serializable {
      * @throws RuntimeException 当输入变量数量不符合要求时抛出异常
      */
     public Variable call(Variable... _inputs) {
-        // 输入验证
-        if (_inputs.length != requireInputNum() && requireInputNum() > 0) {
+        // 输入验证：数量匹配且不允许null
+        if (requireInputNum() >= 0 && _inputs.length != requireInputNum()) {
             throw new RuntimeException("Function call inputs Variable requireInputNum error! Expected: "
                     + requireInputNum() + ", Actual: " + _inputs.length);
+        }
+        if (Arrays.stream(_inputs).anyMatch(Objects::isNull)) {
+            throw new RuntimeException("Function call inputs Variable cannot be null");
         }
 
         // 提取NdArray值
         NdArray[] ndArrayInputs = Arrays.stream(_inputs)
-                .filter(Objects::nonNull)
                 .map(Variable::getValue)
                 .toArray(NdArray[]::new);
 
@@ -63,14 +70,49 @@ public abstract class Function implements Serializable {
         // 创建输出变量
         Variable _output = new Variable(ndArrayOutput);
 
-        // 只在训练模式下构建计算图
-        if (Config.train) {
+        // 只在需要构建计算图时挂接
+        if (shouldBuildGraph(_inputs)) {
             this.inputs = _inputs;
             this.output = _output;
+            this.outputs = new Variable[]{_output};
             _output.setCreator(this);
         }
 
         return _output;
+    }
+
+    /**
+     * 多输出函数的执行入口
+     *
+     * @param _inputs 输入变量数组
+     * @return 输出变量数组
+     */
+    public Variable[] callMulti(Variable... _inputs) {
+        if (requireInputNum() >= 0 && _inputs.length != requireInputNum()) {
+            throw new RuntimeException("Function call inputs Variable requireInputNum error! Expected: "
+                    + requireInputNum() + ", Actual: " + _inputs.length);
+        }
+        if (Arrays.stream(_inputs).anyMatch(Objects::isNull)) {
+            throw new RuntimeException("Function call inputs Variable cannot be null");
+        }
+
+        NdArray[] ndArrayInputs = Arrays.stream(_inputs)
+                .map(Variable::getValue)
+                .toArray(NdArray[]::new);
+
+        NdArray[] ndArrayOutputs = forwardMulti(ndArrayInputs);
+        Variable[] _outputs = Arrays.stream(ndArrayOutputs).map(Variable::new).toArray(Variable[]::new);
+
+        if (shouldBuildGraph(_inputs)) {
+            this.inputs = _inputs;
+            this.outputs = _outputs;
+            this.output = _outputs.length > 0 ? _outputs[0] : null;
+            for (Variable out : _outputs) {
+                out.setCreator(this);
+            }
+        }
+
+        return _outputs;
     }
 
     /**
@@ -85,6 +127,13 @@ public abstract class Function implements Serializable {
     public abstract NdArray forward(NdArray... inputs);
 
     /**
+     * 多输出函数的前向传播（默认不支持，子类按需重写）
+     */
+    public NdArray[] forwardMulti(NdArray... inputs) {
+        throw new UnsupportedOperationException("This function does not support multiple outputs");
+    }
+
+    /**
      * 函数的反向传播计算（求导）
      * <p>
      * 子类必须实现此方法来定义具体的反向传播计算逻辑。
@@ -94,6 +143,16 @@ public abstract class Function implements Serializable {
      * @return 输入变量的梯度列表
      */
     public abstract List<NdArray> backward(NdArray yGrad);
+
+    /**
+     * 多输出函数的反向传播（默认不支持，子类按需重写）
+     *
+     * @param yGrads 与输出一一对应的梯度列表
+     * @return 输入变量的梯度列表
+     */
+    public List<NdArray> backwardMulti(List<NdArray> yGrads) {
+        throw new UnsupportedOperationException("This function does not support multiple outputs");
+    }
 
     /**
      * 获取函数的输入变量数组
@@ -122,6 +181,10 @@ public abstract class Function implements Serializable {
         return output;
     }
 
+    public Variable[] getOutputs() {
+        return outputs;
+    }
+
     /**
      * 设置函数的输出变量
      *
@@ -129,6 +192,10 @@ public abstract class Function implements Serializable {
      */
     public void setOutput(Variable output) {
         this.output = output;
+    }
+
+    public void setOutputs(Variable[] outputs) {
+        this.outputs = outputs;
     }
 
     /**
@@ -149,5 +216,23 @@ public abstract class Function implements Serializable {
     public void unChain() {
         this.inputs = null;
         this.output = null;
+        this.outputs = null;
+    }
+
+    /**
+     * 当前函数是否返回多输出
+     */
+    public boolean isMultiOutput() {
+        return outputs != null && outputs.length > 1;
+    }
+
+    /**
+     * 是否需要构建计算图
+     */
+    protected boolean shouldBuildGraph(Variable[] vars) {
+        if (!Config.train) {
+            return false;
+        }
+        return Arrays.stream(vars).anyMatch(v -> v != null && v.isRequireGrad());
     }
 }

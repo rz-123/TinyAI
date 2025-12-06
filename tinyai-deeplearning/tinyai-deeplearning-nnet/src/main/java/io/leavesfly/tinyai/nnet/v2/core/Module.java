@@ -480,11 +480,21 @@ public abstract class Module extends Function {
                     loadedKeys.add(key);
                 }
             } else if (buffers.containsKey(key)) {
-                // 创建缓冲区副本
-                NdArray valueCopy = value.getShape().isMatrix() ?
-                        NdArray.of(value.getMatrix()) : NdArray.of(value.getArray(), value.getShape());
-                _buffers.put(key.substring(key.lastIndexOf('.') + 1), valueCopy);
-                loadedKeys.add(key);
+                NdArray targetBuffer = buffers.get(key);
+                if (targetBuffer != null) {
+                    NdArray valueCopy = value.getShape().isMatrix() ?
+                            NdArray.of(value.getMatrix()) : NdArray.of(value.getArray(), value.getShape());
+
+                    float[] targetArray = targetBuffer.getArray();
+                    float[] sourceArray = valueCopy.getArray();
+                    if (targetArray.length != sourceArray.length) {
+                        throw new IllegalArgumentException(
+                                "Mismatched buffer size for key: " + key +
+                                        ", expected " + targetArray.length + " but got " + sourceArray.length);
+                    }
+                    System.arraycopy(sourceArray, 0, targetArray, 0, sourceArray.length);
+                    loadedKeys.add(key);
+                }
             } else if (strict) {
                 throw new IllegalArgumentException("Unexpected key in state dict: " + key);
             }

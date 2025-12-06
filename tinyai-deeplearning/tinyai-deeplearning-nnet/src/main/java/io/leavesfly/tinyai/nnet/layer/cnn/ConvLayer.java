@@ -7,7 +7,6 @@ import io.leavesfly.tinyai.nnet.Layer;
 import io.leavesfly.tinyai.nnet.Parameter;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -32,6 +31,14 @@ public class ConvLayer extends Layer {
     private int padding;             // 填充
     private boolean useBias;        // 是否使用偏置
 
+    /**
+     * 前向传播中缓存的中间结果，供反向传播使用
+     */
+    private NdArray lastInput;       // 输入缓存
+    private NdArray lastIm2col;      // im2col 展开结果
+    private int lastOutHeight;
+    private int lastOutWidth;
+    private int lastBatchSize;
 
     public ConvLayer(String name) {
         super(name);
@@ -140,8 +147,13 @@ public class ConvLayer extends Layer {
         int outputHeight = (inputHeight + 2 * padding - kernelHeight) / stride + 1;
         int outputWidth = (inputWidth + 2 * padding - kernelWidth) / stride + 1;
 
-        // 进行Im2Col转换
+        // 进行Im2Col转换，并缓存供反向传播使用
         NdArray im2colResult = performIm2Col(inputData, kernelHeight, kernelWidth, stride, padding);
+        lastInput = inputData;
+        lastIm2col = im2colResult;
+        lastOutHeight = outputHeight;
+        lastOutWidth = outputWidth;
+        lastBatchSize = batchSize;
 
         // 重塑权重为二维矩阵
         NdArray weightReshaped = reshapeWeight();
@@ -214,8 +226,6 @@ public class ConvLayer extends Layer {
                                 int imCol = w * stride + fw - pad;
 
                                 if (imRow >= 0 && imRow < height && imCol >= 0 && imCol < width) {
-                                    // 计算输入数据中的索引
-                                    int inputIndex = ((n * channels + c) * height + imRow) * width + imCol;
                                     outputData[outputRowIndex * outputCols + colIndex] =
                                             inputData.get(n, c, imRow, imCol);
                                 } else {
@@ -252,14 +262,106 @@ public class ConvLayer extends Layer {
 
     @Override
     public List<NdArray> backward(NdArray yGrad) {
-        // 卷积层的反向传播比较复杂，这里提供简化版本 todo
+        // 采用基于im2col的简化反向传播：
+        // y = im2col(x) * W^T + b
+        // dW = dy^T * im2col(x)
+        // dx_col = dy * W
+        // dx 通过 col2im 还原到输入形状
+
+        if (lastIm2col == null || lastInput == null) {
+            throw new IllegalStateException("Backward called before forward in ConvLayer");
+        }
+
+        int outSpatial = lastBatchSize * lastOutHeight * lastOutWidth;
+        int colDim = inChannels * kernelHeight * kernelWidth;
+
+        // 1) 处理上游梯度形状: (batch, out_c, out_h, out_w) -> (outSpatial, out_c)
+        NdArray gradOutReshaped = yGrad.reshape(Shape.of(outSpatial, outChannels));
+        float[][] gradOutMat = gradOutReshaped.getMatrix();
+
+        float[][] im2colMat = lastIm2col.getMatrix(); // shape (outSpatial, colDim)
+
+        // 2) 计算权重梯度 (out_c, colDim)
+        float[][] weightGrad2D = new float[outChannels][colDim];
+        for (int oc = 0; oc < outChannels; oc++) {
+            for (int k = 0; k < colDim; k++) {
+                float sum = 0f;
+                for (int i = 0; i < outSpatial; i++) {
+                    sum += gradOutMat[i][oc] * im2colMat[i][k];
+                }
+                weightGrad2D[oc][k] = sum;
+            }
+        }
+        NdArray weightGrad = NdArray.of(weightGrad2D)
+                .reshape(Shape.of(outChannels, inChannels, kernelHeight, kernelWidth));
+        weight.setGrad(weightGrad);
+
+        // 3) 计算偏置梯度 (out_c)
+        if (useBias && bias != null) {
+            float[] biasGrad = new float[outChannels];
+            for (int i = 0; i < outSpatial; i++) {
+                for (int oc = 0; oc < outChannels; oc++) {
+                    biasGrad[oc] += gradOutMat[i][oc];
+                }
+            }
+            bias.setGrad(NdArray.of(biasGrad, Shape.of(outChannels)));
+        }
+
+        // 4) 计算输入梯度（先得到列形式，再 col2im）
+        float[][] weight2D = reshapeWeight().getMatrix(); // (out_c, colDim)
+        float[][] gradXCol = new float[outSpatial][colDim];
+        for (int i = 0; i < outSpatial; i++) {
+            for (int k = 0; k < colDim; k++) {
+                float sum = 0f;
+                for (int oc = 0; oc < outChannels; oc++) {
+                    sum += gradOutMat[i][oc] * weight2D[oc][k];
+                }
+                gradXCol[i][k] = sum;
+            }
+        }
+
+        NdArray gradInput = col2im(gradXCol);
+
         List<NdArray> result = new ArrayList<>();
-        result.add(yGrad);
+        result.add(gradInput);
         return result;
     }
 
     @Override
     public int requireInputNum() {
         return 1;
+    }
+
+    /**
+     * 将 im2col 展开的梯度还原为输入形状
+     */
+    private NdArray col2im(float[][] gradCols) {
+        int height = lastInput.getShape().getDimension(2);
+        int width = lastInput.getShape().getDimension(3);
+        float[] gradInputData = new float[lastBatchSize * inChannels * height * width];
+
+        int rowIndex = 0;
+        for (int n = 0; n < lastBatchSize; n++) {
+            for (int h = 0; h < lastOutHeight; h++) {
+                for (int w = 0; w < lastOutWidth; w++) {
+                    int colIndex = 0;
+                    for (int c = 0; c < inChannels; c++) {
+                        for (int fh = 0; fh < kernelHeight; fh++) {
+                            int imRow = h * stride + fh - padding;
+                            for (int fw = 0; fw < kernelWidth; fw++) {
+                                int imCol = w * stride + fw - padding;
+                                if (imRow >= 0 && imRow < height && imCol >= 0 && imCol < width) {
+                                    int inputIdx = ((n * inChannels + c) * height + imRow) * width + imCol;
+                                    gradInputData[inputIdx] += gradCols[rowIndex][colIndex];
+                                }
+                                colIndex++;
+                            }
+                        }
+                    }
+                    rowIndex++;
+                }
+            }
+        }
+        return NdArray.of(gradInputData, Shape.of(lastBatchSize, inChannels, height, width));
     }
 }

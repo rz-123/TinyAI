@@ -55,17 +55,30 @@ v2/
 │   │   ├── Sigmoid.java
 │   │   ├── Tanh.java
 │   │   └── SoftMax.java
+│   ├── embedding/    # 词向量层
+│   │   └── Embedding.java
 │   ├── norm/         # 归一化层
 │   │   ├── LayerNorm.java
 │   │   └── BatchNorm1d.java  # ✨ 新增
-│   ├── conv/         # 卷积层（待实现）
-│   ├── rnn/          # 循环层（待实现）
-│   └── transformer/  # Transformer组件（待实现）
+│   ├── conv/         # 卷积层
+│   │   ├── Conv2d.java
+│   │   ├── LazyConv2d.java
+│   │   ├── MaxPool2d.java
+│   │   └── AvgPool2d.java
+│   ├── rnn/          # 循环层
+│   │   ├── LSTM.java
+│   │   ├── GRU.java
+│   │   └── SimpleRNN.java
+│   └── transformer/  # Transformer组件
+│       ├── MultiHeadAttention.java
+│       ├── TransformerEncoderLayer.java
+│       ├── TransformerDecoderLayer.java
+│       └── PositionalEncoding.java
 │
 ├── container/         # 容器模块
 │   ├── Sequential.java
 │   ├── ModuleList.java
-│   └── ModuleDict.java
+│   └── ModuleDict.java  # ✅ 新增：字典式容器
 │
 └── utils/             # 工具类
     └── StateDict.java
@@ -190,11 +203,11 @@ V2 与 V1 完全隔离，互不影响：
 
 ### 测试覆盖（🚧 进行中）
 - [x] BatchNorm1d 完整单元测试（11个测试用例）
-- [ ] Module核心组件测试
-- [ ] Linear层功能测试
-- [ ] 激活函数测试
-- [ ] 初始化器测试
-- [ ] 集成测试
+- [x] Module核心组件测试
+- [x] Linear层功能测试
+- [x] 激活函数测试
+- [x] 初始化器测试
+- [x] 集成测试
 
 ### 高级层（📅 计划中）
 - [ ] 阶段三：RNN层（LSTM、GRU、SimpleRNN）

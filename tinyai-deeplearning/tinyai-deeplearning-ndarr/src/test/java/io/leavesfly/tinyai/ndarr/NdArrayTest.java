@@ -511,6 +511,26 @@ public class NdArrayTest {
     }
 
     @Test
+    public void testAddToMultiDimensional() {
+        // 形状 [1,2,3]
+        NdArray base = NdArray.of(new float[][][]{{{1f, 2f, 3f}, {4f, 5f, 6f}}});
+        // 形状 [1,1,2]，叠加到最后两个维度的偏移 (0,1)
+        NdArray delta = NdArray.of(new float[][][]{{{10f, 20f}}});
+
+        base.addTo(0, 1, delta);
+
+        float[][][] result = base.get3dArray();
+        // 第一行: [1, 2+10, 3+20]
+        assertEquals(1f, result[0][0][0], 1e-6);
+        assertEquals(12f, result[0][0][1], 1e-6);
+        assertEquals(23f, result[0][0][2], 1e-6);
+        // 第二行保持不变
+        assertEquals(4f, result[0][1][0], 1e-6);
+        assertEquals(5f, result[0][1][1], 1e-6);
+        assertEquals(6f, result[0][1][2], 1e-6);
+    }
+
+    @Test
     public void testSubNdArray() {
         NdArray a = NdArray.of(new float[][]{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
         NdArray sub = a.subNdArray(1, 3, 1, 3);
@@ -640,13 +660,6 @@ public class NdArrayTest {
 
     @Test
     public void testAdvancedArrayCreation() {
-        // 暂时跳过linSpace测试，等待修复实现
-        // NdArray linspace = NdArray.linSpace(0, 10, 11);
-        // assertEquals(Shape.of(1, 11), linspace.getShape());
-        // assertEquals(0f, linspace.getMatrix()[0][0], 1e-6);
-        // assertEquals(10f, linspace.getMatrix()[0][10], 1e-6);
-        // assertEquals(5f, linspace.getMatrix()[0][5], 1e-6);
-
         // 测试随机数组的形状和范围
         NdArray randomUniform = NdArray.likeRandom(-2f, 3f, Shape.of(3, 4));
         assertEquals(Shape.of(3, 4), randomUniform.getShape());
@@ -659,6 +672,28 @@ public class NdArrayTest {
                 assertTrue("Random value should be <= 3", randomMatrix[i][j] <= 3f);
             }
         }
+    }
+
+    @Test
+    public void testLinSpace() {
+        NdArray linspace = NdArray.linSpace(0f, 10f, 6);
+        assertEquals(Shape.of(1, 6), linspace.getShape());
+        float[] expected = {0f, 2f, 4f, 6f, 8f, 10f};
+        float[] actual = linspace.getMatrix()[0];
+        for (int k = 0; k < expected.length; k++) {
+            assertEquals(expected[k], actual[k], 1e-6);
+        }
+    }
+
+    @Test
+    public void testRandomWithSeedIsDeterministic() {
+        NdArray r1 = NdArray.likeRandomN(Shape.of(2, 3), 42);
+        NdArray r2 = NdArray.likeRandomN(Shape.of(2, 3), 42);
+        assertArrayEquals(r1.getArray(), r2.getArray(), 1e-6f);
+
+        NdArray u1 = NdArray.likeRandom(-1f, 1f, Shape.of(2, 2), 123);
+        NdArray u2 = NdArray.likeRandom(-1f, 1f, Shape.of(2, 2), 123);
+        assertArrayEquals(u1.getArray(), u2.getArray(), 1e-6f);
     }
 
     @Test
@@ -739,6 +774,29 @@ public class NdArrayTest {
         NdArray minAxis1 = data.min(1);
         float[][] expectedMin1 = {{1}, {2}};
         assertArrayEquals(expectedMin1, minAxis1.getMatrix());
+    }
+
+    @Test
+    public void testMaxAndArgMaxWithNegativeValues() {
+        NdArray data = NdArray.of(new float[][]{{-5f, -2f}, {-3f, -4f}});
+
+        assertEquals(-2f, data.max(), 1e-6);
+
+        NdArray maxAxis0 = data.max(0);
+        float[][] expectedMax0 = {{-3f, -2f}};
+        assertArrayEquals(expectedMax0, maxAxis0.getMatrix());
+
+        NdArray maxAxis1 = data.max(1);
+        float[][] expectedMax1 = {{-2f}, {-3f}};
+        assertArrayEquals(expectedMax1, maxAxis1.getMatrix());
+
+        NdArray argMaxAxis0 = data.argMax(0);
+        float[][] expectedArgMax0 = {{1f, 0f}};
+        assertArrayEquals(expectedArgMax0, argMaxAxis0.getMatrix());
+
+        NdArray argMaxAxis1 = data.argMax(1);
+        float[][] expectedArgMax1 = {{1f}, {0f}};
+        assertArrayEquals(expectedArgMax1, argMaxAxis1.getMatrix());
     }
 
     @Test

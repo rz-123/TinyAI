@@ -1,8 +1,11 @@
 package io.leavesfly.tinyai.nnet.v2.layer.transformer;
 
 import io.leavesfly.tinyai.func.Variable;
+import io.leavesfly.tinyai.func.matrix.Permute;
+import io.leavesfly.tinyai.ndarr.Shape;
 import io.leavesfly.tinyai.nnet.v2.core.Module;
 import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Dropout;
 
 /**
  * V2版本的MultiHeadAttention层
@@ -41,6 +44,7 @@ public class MultiHeadAttention extends Module {
     private Linear keyProjection;    // K投影
     private Linear valueProjection;  // V投影
     private Linear outputProjection; // 输出投影
+    private final Dropout attnDropout; // 注意力权重dropout
 
     /**
      * 构造函数
@@ -69,12 +73,14 @@ public class MultiHeadAttention extends Module {
         keyProjection = new Linear("k_proj", dModel, dModel, true);
         valueProjection = new Linear("v_proj", dModel, dModel, true);
         outputProjection = new Linear("o_proj", dModel, dModel, true);
+        attnDropout = new Dropout("attn_dropout", dropout);
 
         // 注册子模块
         registerModule("q_proj", queryProjection);
         registerModule("k_proj", keyProjection);
         registerModule("v_proj", valueProjection);
         registerModule("o_proj", outputProjection);
+        registerModule("attn_dropout", attnDropout);
 
         init();
     }
@@ -142,10 +148,9 @@ public class MultiHeadAttention extends Module {
      * @return 分割后的张量
      */
     private Variable splitHeads(Variable x, int batchSize, int seqLen) {
-        // 简化实现：暂时返回原始形状
-        // TODO: 需要实现reshape和transpose操作
-        // 当前简化版本假设单头注意力
-        return x;
+        // (batch, seq_len, d_model) -> (batch, num_heads, seq_len, d_k)
+        Variable reshaped = x.reshape(Shape.of(batchSize, seqLen, numHeads, dK));
+        return new Permute(0, 2, 1, 3).call(reshaped);
     }
 
     /**
@@ -160,9 +165,9 @@ public class MultiHeadAttention extends Module {
      * @return 合并后的张量
      */
     private Variable mergeHeads(Variable x, int batchSize, int seqLen) {
-        // 简化实现：暂时返回原始形状
-        // TODO: 需要实现transpose和reshape操作
-        return x;
+        // (batch, num_heads, seq_len, d_v) -> (batch, seq_len, d_model)
+        Variable permuted = new Permute(0, 2, 1, 3).call(x);
+        return permuted.reshape(Shape.of(batchSize, seqLen, dModel));
     }
 
     /**
@@ -177,7 +182,8 @@ public class MultiHeadAttention extends Module {
      */
     private Variable scaledDotProductAttention(Variable Q, Variable K, Variable V) {
         // 1. 计算 Q * K^T
-        Variable scores = Q.matMul(K.transpose());
+        Variable kTransposed = new Permute(0, 1, 3, 2).call(K);
+        Variable scores = Q.matMul(kTransposed);
 
         // 2. 缩放
         double scale = Math.sqrt(dK);
@@ -188,7 +194,7 @@ public class MultiHeadAttention extends Module {
 
         // 4. 应用dropout（训练模式）
         if (isTraining() && dropout > 0) {
-            // TODO: 实现dropout
+            attentionWeights = attnDropout.forward(attentionWeights);
         }
 
         // 5. 计算注意力输出: attention_weights * V

@@ -31,17 +31,16 @@ public class SoftmaxCE extends Function {
 
         int row = predict.getShape().getRow();
 
-        NdArray max = predict.max(1);
-        NdArray max2PredictShape = max.broadcastTo(predict.getShape());
-        max = max.add(predict.sub(max2PredictShape).exp().sumTo(Shape.of(row, 1)).log());
+        // log-sum-exp for numerical stability
+        NdArray rowMax = predict.max(1); // shape: [row,1]
+        NdArray stabilized = predict.sub(rowMax.broadcastTo(predict.getShape()));
+        NdArray logSumExp = rowMax.add(stabilized.exp().sumTo(Shape.of(row, 1)).log());
 
         int[] colSlices = NdArrayUtil.toInt(labelY.transpose().getMatrix()[0]);
+        NdArray logProb = predict.sub(logSumExp.broadcastTo(predict.getShape()));
+        NdArray picked = logProb.getItem(NdArrayUtil.getSeq(row), colSlices);
 
-        predict = predict.sub(max.broadcastTo(predict.getShape()));
-
-        predict = predict.getItem(NdArrayUtil.getSeq(row), colSlices);
-
-        float sum = predict.sum().getNumber().floatValue();
+        float sum = picked.sum().getNumber().floatValue();
         return NdArray.of(-sum / (float) row);
     }
 
@@ -64,14 +63,20 @@ public class SoftmaxCE extends Function {
         int row = predict.getShape().getRow();
         int column = predict.getShape().getColumn();
 
-        NdArray gy = yGrad.mulNum(1 / (float) row);
-        NdArray y = predict.softMax();
-        NdArray oneHot = NdArray.eye(Shape.of(column, column)).getItem(
-                NdArrayUtil.toInt(label.transpose().getMatrix()[0]), null);
+        // softmax
+        NdArray max = predict.max(1);
+        NdArray stabilized = predict.sub(max.broadcastTo(predict.getShape()));
+        NdArray exp = stabilized.exp();
+        NdArray softmax = exp.div(exp.sumTo(Shape.of(row, 1)).broadcastTo(predict.getShape()));
 
-        y = y.sub(oneHot).mulNum(gy.getNumber());
+        // one-hot labels
+        NdArray oneHot = NdArray.eye(Shape.of(column, column))
+                .getItem(NdArrayUtil.toInt(label.transpose().getMatrix()[0]), null);
 
-        return Arrays.asList(y, label.like(1));
+        float scale = yGrad.getNumber().floatValue() / (float) row;
+        NdArray gradPredict = softmax.sub(oneHot).mulNum(scale);
+
+        return Arrays.asList(gradPredict, label.like(0));
     }
 
     /**
