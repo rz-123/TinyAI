@@ -34,23 +34,23 @@ MiniMind 采用经典的 Transformer Decoder-Only 架构,类似 GPT 系列:
 ```mermaid
 graph TB
     subgraph Input["输入层"]
-        TokenIds[Token IDs<br/>[batch, seq_len]]
-        TokenEmb[Token Embedding<br/>维度: 512]
+        TokenIds["Token IDs<br/>[batch, seq_len]"]
+        TokenEmb["Token Embedding<br/>维度: 512"]
     end
     
-    subgraph Transformer["Transformer 层 × 8"]
-        Layer1[TransformerLayer 1<br/>Attention + FFN]
-        Layer2[TransformerLayer 2<br/>Attention + FFN]
-        LayerN[TransformerLayer 8<br/>Attention + FFN]
+    subgraph Transformer["Transformer 层 x 8"]
+        Layer1["TransformerLayer 1<br/>Attention + FFN"]
+        Layer2["TransformerLayer 2<br/>Attention + FFN"]
+        LayerN["TransformerLayer 8<br/>Attention + FFN"]
         
         Layer1 --> Layer2
         Layer2 -.-> LayerN
     end
     
     subgraph Output["输出层"]
-        FinalNorm[Final LayerNorm]
-        LMHead[LM Head<br/>Linear: 512 → 6400]
-        Logits[Logits<br/>[batch, seq_len, vocab]]
+        FinalNorm["Final LayerNorm"]
+        LMHead["LM Head<br/>Linear: 512->6400"]
+        Logits["Logits<br/>[batch, seq_len, vocab]"]
     end
     
     TokenIds --> TokenEmb
