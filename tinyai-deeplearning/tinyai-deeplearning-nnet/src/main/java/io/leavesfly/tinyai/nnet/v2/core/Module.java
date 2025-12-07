@@ -585,4 +585,209 @@ public abstract class Module extends Function {
         this._parent = _parent;
     }
 
+    /* ===== V2增强功能 ===== */
+
+    /**
+     * 冻结所有参数
+     * <p>
+     * 将所有参数的requiresGrad设置为false，
+     * 使其在反向传播时不计算梯度。
+     * 常用于迁移学习场景，冻结预训练层。
+     *
+     * @return 当前模块（支持链式调用）
+     */
+    public Module freeze() {
+        for (Parameter param : namedParameters().values()) {
+            if (param != null) {
+                param.setRequiresGrad(false);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * 解冻所有参数
+     * <p>
+     * 将所有参数的requiresGrad设置为true，
+     * 使其在反向传播时计算梯度。
+     *
+     * @return 当前模块（支持链式调用）
+     */
+    public Module unfreeze() {
+        for (Parameter param : namedParameters().values()) {
+            if (param != null) {
+                param.setRequiresGrad(true);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * 设置所有参数的requires_grad
+     *
+     * @param requiresGrad 是否需要计算梯度
+     * @return 当前模块（支持链式调用）
+     */
+    public Module requiresGrad(boolean requiresGrad) {
+        for (Parameter param : namedParameters().values()) {
+            if (param != null) {
+                param.setRequiresGrad(requiresGrad);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * 统计参数数量
+     * <p>
+     * 计算模型的总参数量。
+     *
+     * @param onlyTrainable 是否只统计可训练参数
+     * @return 参数总数
+     */
+    public long numParameters(boolean onlyTrainable) {
+        long count = 0;
+        for (Parameter param : namedParameters().values()) {
+            if (param != null && param.data() != null) {
+                if (!onlyTrainable || param.requiresGrad()) {
+                    count += param.data().getShape().size();
+                }
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 统计所有参数数量
+     *
+     * @return 参数总数
+     */
+    public long numParameters() {
+        return numParameters(false);
+    }
+
+    /**
+     * 获取模型参数摘要
+     * <p>
+     * 返回模型结构和参数统计信息。
+     *
+     * @return 参数摘要字符串
+     */
+    public String parameterSummary() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=".repeat(60)).append("\n");
+        sb.append(String.format("%-40s %15s\n", "Layer (type)", "Param #"));
+        sb.append("=".repeat(60)).append("\n");
+
+        for (Map.Entry<String, Parameter> entry : namedParameters().entrySet()) {
+            if (entry.getValue() != null && entry.getValue().data() != null) {
+                long paramCount = entry.getValue().data().getShape().size();
+                String trainable = entry.getValue().requiresGrad() ? "" : " (frozen)";
+                sb.append(String.format("%-40s %,15d%s\n", 
+                        entry.getKey(), paramCount, trainable));
+            }
+        }
+
+        sb.append("=".repeat(60)).append("\n");
+        sb.append(String.format("Total params: %,d\n", numParameters(false)));
+        sb.append(String.format("Trainable params: %,d\n", numParameters(true)));
+        sb.append(String.format("Non-trainable params: %,d\n", 
+                numParameters(false) - numParameters(true)));
+        sb.append("=".repeat(60)).append("\n");
+
+        return sb.toString();
+    }
+
+    /**
+     * 复制模型（深拷贝）
+     * <p>
+     * 创建模型的深拷贝，包括所有参数和缓冲区。
+     * 注意：这是一个简化实现，可能不适用于所有情况。
+     *
+     * @return 模型的深拷贝
+     */
+    public Map<String, NdArray> copyStateDict() {
+        Map<String, NdArray> stateCopy = new LinkedHashMap<>();
+        Map<String, NdArray> state = stateDict();
+
+        for (Map.Entry<String, NdArray> entry : state.entrySet()) {
+            NdArray original = entry.getValue();
+            NdArray copy = original.getShape().isMatrix() ?
+                    NdArray.of(original.getMatrix()) :
+                    NdArray.of(original.getArray(), original.getShape());
+            stateCopy.put(entry.getKey(), copy);
+        }
+
+        return stateCopy;
+    }
+
+    /**
+     * 获取模型信息（额外表示）
+     * <p>
+     * 子类可重写此方法以提供额外的信息。
+     *
+     * @return 额外信息字符串
+     */
+    public String extraRepr() {
+        return "";
+    }
+
+    /**
+     * 获取子模块数量
+     *
+     * @return 直接子模块数量
+     */
+    public int numChildren() {
+        return _modules.size();
+    }
+
+    /**
+     * 获取所有子模块（不递归）
+     *
+     * @return 子模块集合
+     */
+    public Collection<Module> children() {
+        return _modules.values();
+    }
+
+    /**
+     * 获取所有模块（包括自身，递归）
+     *
+     * @return 所有模块的迭代器
+     */
+    public Iterable<Module> modules() {
+        List<Module> allModules = new ArrayList<>();
+        allModules.add(this);
+        for (Module child : _modules.values()) {
+            if (child != null) {
+                for (Module m : child.modules()) {
+                    allModules.add(m);
+                }
+            }
+        }
+        return allModules;
+    }
+
+    /**
+     * 将模型设置为评估模式并冻结
+     * <p>
+     * 常用于推理阶段。
+     *
+     * @return 当前模块（支持链式调用）
+     */
+    public Module evalAndFreeze() {
+        return eval().freeze();
+    }
+
+    /**
+     * 将模型设置为训练模式并解冻
+     * <p>
+     * 常用于恢复训练。
+     *
+     * @return 当前模块（支持链式调用）
+     */
+    public Module trainAndUnfreeze() {
+        return train().unfreeze();
+    }
+
 }

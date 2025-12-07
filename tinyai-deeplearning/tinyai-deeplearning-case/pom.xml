@@ -32,6 +32,11 @@
             <artifactId>tinyai-deeplearning-ml</artifactId>
         </dependency>
 
+        <!-- 依赖tinyai-nnet (v2模块) -->
+        <dependency>
+            <groupId>io.leavesfly.tinyai</groupId>
+            <artifactId>tinyai-deeplearning-nnet</artifactId>
+        </dependency>
 
         <!-- 测试依赖 -->
         <dependency>

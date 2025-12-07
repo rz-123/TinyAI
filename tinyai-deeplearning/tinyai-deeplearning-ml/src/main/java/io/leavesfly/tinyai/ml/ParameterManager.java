@@ -1,5 +1,8 @@
 package io.leavesfly.tinyai.ml;
 
+import io.leavesfly.tinyai.ml.exception.ParameterMismatchException;
+import io.leavesfly.tinyai.ml.parameter.ParameterOperator;
+import io.leavesfly.tinyai.ml.util.ValidationUtils;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
 import io.leavesfly.tinyai.nnet.Parameter;
@@ -76,9 +79,8 @@ public class ParameterManager {
      * @return 成功复制的参数数量
      */
     public static int copyParameters(Model sourceModel, Model targetModel, boolean strict) {
-        if (sourceModel == null || targetModel == null) {
-            throw new IllegalArgumentException("模型不能为空");
-        }
+        ValidationUtils.requireNonNull(sourceModel, "sourceModel");
+        ValidationUtils.requireNonNull(targetModel, "targetModel");
 
         Map<String, Parameter> sourceParams = sourceModel.getAllParams();
         Map<String, Parameter> targetParams = targetModel.getAllParams();
@@ -93,51 +95,27 @@ public class ParameterManager {
             if (targetParams.containsKey(paramName)) {
                 Parameter targetParam = targetParams.get(paramName);
                 
-                // 检查形状是否匹配
-                if (sourceParam.getValue().getShape().equals(targetParam.getValue().getShape())) {
-                    // 复制参数值
-                    try {
-                        // 尝试按维度复制
-                        if (sourceParam.getValue().getShape().getDimNum() == 2) {
-                            // 2D数组处理
-                            float[][] sourceMatrix = sourceParam.getValue().getMatrix();
-                            float[][] targetMatrix = targetParam.getValue().getMatrix();
-                            for (int i = 0; i < sourceMatrix.length; i++) {
-                                for (int j = 0; j < sourceMatrix[i].length; j++) {
-                                    targetParam.getValue().set(sourceMatrix[i][j], i, j);
-                                }
-                            }
-                            copiedCount++;
-                        } else if (sourceParam.getValue().getShape().getDimNum() == 1) {
-                            // 1D数组处理
-                            float value = sourceParam.getValue().getNumber().floatValue();
-                            targetParam.getValue().set(value, 0);
-                            copiedCount++;
-                        } else {
-                            // 标量处理
-                            float value = sourceParam.getValue().getNumber().floatValue();
-                            targetParam.getValue().set(value);
-                            copiedCount++;
-                        }
-                    } catch (Exception e) {
-                        System.out.println("警告: 无法复制参数 " + paramName + ": " + e.getMessage());
-                        skippedCount++;
-                    }
-                } else {
-                    String message = "参数 " + paramName + " 形状不匹配: 源=" + 
-                                   sourceParam.getValue().getShape() + ", 目标=" + 
-                                   targetParam.getValue().getShape();
+                try {
+                    // 使用统一的参数复制接口（支持任意维度）
+                    ParameterOperator.copyParameter(sourceParam, targetParam);
+                    copiedCount++;
+                } catch (ParameterMismatchException e) {
                     if (strict) {
-                        throw new RuntimeException(message);
+                        throw new ParameterMismatchException(paramName, 
+                            sourceParam.getValue().getShape(), 
+                            targetParam.getValue().getShape());
                     } else {
-                        System.out.println("警告: " + message + "，跳过复制");
+                        System.out.println("警告: " + e.getMessage() + "，跳过复制");
                         skippedCount++;
                     }
+                } catch (Exception e) {
+                    System.out.println("警告: 无法复制参数 " + paramName + ": " + e.getMessage());
+                    skippedCount++;
                 }
             } else {
                 String message = "目标模型中不存在参数: " + paramName;
                 if (strict) {
-                    throw new RuntimeException(message);
+                    throw new IllegalArgumentException(message);
                 } else {
                     System.out.println("警告: " + message + "，跳过复制");
                     skippedCount++;
@@ -149,7 +127,7 @@ public class ParameterManager {
         if (strict) {
             for (String targetParamName : targetParams.keySet()) {
                 if (!sourceParams.containsKey(targetParamName)) {
-                    throw new RuntimeException("源模型中不存在参数: " + targetParamName);
+                    throw new IllegalArgumentException("源模型中不存在参数: " + targetParamName);
                 }
             }
         }
@@ -190,7 +168,7 @@ public class ParameterManager {
             return false;
         }
 
-        // 检查每个参数是否相同
+        // 使用统一的参数比较接口（支持任意维度）
         for (Map.Entry<String, Parameter> entry : params1.entrySet()) {
             String paramName = entry.getKey();
             Parameter param1 = entry.getValue();
@@ -201,30 +179,10 @@ public class ParameterManager {
 
             Parameter param2 = params2.get(paramName);
             
-            // 检查形状是否相同
-            if (!param1.getValue().getShape().equals(param2.getValue().getShape())) {
+            // 使用统一的参数比较方法
+            if (!ParameterOperator.compareParameter(param1, param2, tolerance)) {
                 return false;
             }
-
-                    // 检查数值是否相同
-                    if (param1.getValue().getShape().getDimNum() == 2) {
-                        float[][] matrix1 = param1.getValue().getMatrix();
-                        float[][] matrix2 = param2.getValue().getMatrix();
-                        
-                        for (int i = 0; i < matrix1.length; i++) {
-                            for (int j = 0; j < matrix1[i].length; j++) {
-                                if (Math.abs(matrix1[i][j] - matrix2[i][j]) > tolerance) {
-                                    return false;
-                                }
-                            }
-                        }
-                    } else {
-                        // 如果不是矩阵，直接比较数值
-                        if (Math.abs(param1.getValue().getNumber().doubleValue() - 
-                                   param2.getValue().getNumber().doubleValue()) > tolerance) {
-                            return false;
-                        }
-                    }
         }
 
         return true;

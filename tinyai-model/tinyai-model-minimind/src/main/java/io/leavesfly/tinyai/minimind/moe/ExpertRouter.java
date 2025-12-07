@@ -1,0 +1,285 @@
+package io.leavesfly.tinyai.minimind.moe;
+
+import io.leavesfly.tinyai.func.Variable;
+import io.leavesfly.tinyai.ndarr.NdArray;
+import io.leavesfly.tinyai.ndarr.Shape;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
+
+import java.util.Map;
+import java.util.Arrays;
+import java.util.Comparator;
+
+/**
+ * Expert Router - 专家路由网络
+ * 
+ * 根据输入计算每个专家的权重,并选择Top-K个专家激活
+ * 
+ * 核心功能:
+ * 1. 计算门控权重: gate_logits = W_g · x
+ * 2. Top-K选择: 只保留权重最大的K个专家
+ * 3. Softmax归一化: 确保权重和为1
+ * 4. Noisy Top-K: 添加噪声避免专家过载
+ * 
+ * 路由公式:
+ * w_i = Softmax(W_g · x + noise)
+ * Top-K: 选择权重最大的K个专家
+ * 
+ * @author leavesfly
+ * @since 2024
+ */
+public class ExpertRouter extends Module {
+    
+    private final int inputDim;
+    private final int numExperts;
+    private final int topK;
+    private final float noiseFactor;
+    
+    private final Linear gateLinear;  // 门控线性层: input_dim -> num_experts
+    
+    /**
+     * 构造函数
+     * 
+     * @param inputDim 输入维度
+     * @param numExperts 专家数量
+     * @param topK Top-K选择数量
+     * @param noiseFactor 噪声因子(用于负载均衡)
+     */
+    public ExpertRouter(int inputDim, int numExperts, int topK, float noiseFactor) {
+        super("expert_router");
+        
+        if (topK > numExperts) {
+            throw new IllegalArgumentException("topK must be <= numExperts");
+        }
+        if (topK < 1) {
+            throw new IllegalArgumentException("topK must be >= 1");
+        }
+        
+        this.inputDim = inputDim;
+        this.numExperts = numExperts;
+        this.topK = topK;
+        this.noiseFactor = noiseFactor;
+        
+        // 创建门控层
+        this.gateLinear = new Linear("gate", inputDim, numExperts, true);
+        
+        // 注册子模块
+        registerModule("gate", gateLinear);
+    }
+    
+    /**
+     * 前向传播(Variable版本,Module接口要求)
+     */
+    @Override
+    public Variable forward(Variable... inputs) {
+        // RouterOutput无法封装为Variable,返回原始输入
+        // 实际使用应调用forwardRouter
+        return inputs[0];
+    }
+    
+    /**
+     * 前向传播(Function接口)
+     * 
+     * @param inputs 输入数组
+     * @return 路由结果 RouterOutput(packed in NdArray)
+     */
+    @Override
+    public NdArray forward(NdArray... inputs) {
+        Variable input = new Variable(inputs[0]);
+        // Note: RouterOutput不能直接返回NdArray,这里仅为满足Module的接口
+        // 实际使用时应调用forwardRouter
+        return input.getValue(); // placeholder
+    }
+    
+    /**
+     * 前向传播(返回RouterOutput)
+     * 
+     * @param input 输入 [batch_size, input_dim]
+     * @return 路由结果 RouterOutput
+     */
+    public RouterOutput forwardRouter(Variable input) {
+        int batchSize = input.getShape().getDimension(0);
+        
+        // 1. 计算门控logits: [batch_size, num_experts]
+        Variable gateLogits = gateLinear.forward(input);
+        
+        // 2. 添加噪声(训练时)
+        if (isTraining() && noiseFactor > 0) {
+            gateLogits = addNoise(gateLogits);
+        }
+        
+        // 3. Top-K选择和Softmax
+        RouterOutput output = topKGating(gateLogits, batchSize);
+        
+        return output;
+    }
+    
+    /**
+     * Top-K门控计算
+     * 
+     * @param gateLogits 门控logits [batch_size, num_experts]
+     * @param batchSize 批次大小
+     * @return 路由结果
+     */
+    private RouterOutput topKGating(Variable gateLogits, int batchSize) {
+        NdArray logitsData = gateLogits.getValue();
+        float[] logitsBuffer = ((io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu) logitsData).buffer;
+        
+        // 准备输出数组
+        int[][] topKIndices = new int[batchSize][topK];     // Top-K专家索引
+        float[][] topKWeights = new float[batchSize][topK]; // Top-K专家权重
+        float[][] allWeights = new float[batchSize][numExperts]; // 所有专家权重(用于负载均衡)
+        
+        // 对每个样本进行Top-K选择
+        for (int b = 0; b < batchSize; b++) {
+            // 获取当前样本的logits
+            float[] sampleLogits = new float[numExperts];
+            for (int e = 0; e < numExperts; e++) {
+                sampleLogits[e] = logitsBuffer[b * numExperts + e];
+            }
+            
+            // 计算Softmax(所有专家)
+            float[] softmaxWeights = softmax(sampleLogits);
+            allWeights[b] = softmaxWeights;
+            
+            // Top-K选择
+            Integer[] indices = new Integer[numExperts];
+            for (int i = 0; i < numExperts; i++) {
+                indices[i] = i;
+            }
+            
+            // 按权重排序
+            Arrays.sort(indices, Comparator.comparingDouble(i -> -softmaxWeights[i]));
+            
+            // 提取Top-K
+            float topKSum = 0.0f;
+            for (int k = 0; k < topK; k++) {
+                topKIndices[b][k] = indices[k];
+                topKWeights[b][k] = softmaxWeights[indices[k]];
+                topKSum += topKWeights[b][k];
+            }
+            
+            // 重新归一化Top-K权重
+            if (topKSum > 0) {
+                for (int k = 0; k < topK; k++) {
+                    topKWeights[b][k] /= topKSum;
+                }
+            }
+        }
+        
+        return new RouterOutput(topKIndices, topKWeights, allWeights);
+    }
+    
+    /**
+     * 添加噪声(Noisy Top-K)
+     * 
+     * 噪声公式: noise = StandardNormal() * noiseFactor * Softplus(W_noise · x)
+     */
+    private Variable addNoise(Variable gateLogits) {
+        NdArray logitsData = gateLogits.getValue();
+        float[] logitsBuffer = ((io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu) logitsData).buffer;
+        
+        // 简化实现:直接添加高斯噪声
+        for (int i = 0; i < logitsBuffer.length; i++) {
+            float noise = (float) (Math.random() - 0.5) * 2 * noiseFactor;
+            logitsBuffer[i] += noise;
+        }
+        
+        return gateLogits;
+    }
+    
+    /**
+     * Softmax计算
+     */
+    private float[] softmax(float[] logits) {
+        int len = logits.length;
+        float[] result = new float[len];
+        
+        // 找到最大值(数值稳定性)
+        float maxLogit = logits[0];
+        for (float logit : logits) {
+            if (logit > maxLogit) {
+                maxLogit = logit;
+            }
+        }
+        
+        // 计算exp和sum
+        float sum = 0.0f;
+        for (int i = 0; i < len; i++) {
+            result[i] = (float) Math.exp(logits[i] - maxLogit);
+            sum += result[i];
+        }
+        
+        // 归一化
+        if (sum > 0) {
+            for (int i = 0; i < len; i++) {
+                result[i] /= sum;
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 获取输入维度
+     */
+    public int getInputDim() {
+        return inputDim;
+    }
+    
+    /**
+     * 获取专家数量
+     */
+    public int getNumExperts() {
+        return numExperts;
+    }
+    
+    /**
+     * 获取Top-K数量
+     */
+    public int getTopK() {
+        return topK;
+    }
+    
+    @Override
+    public String toString() {
+        return String.format("ExpertRouter(input=%d, experts=%d, topK=%d, noise=%.3f)",
+            inputDim, numExperts, topK, noiseFactor);
+    }
+    
+    /**
+     * 路由输出结果
+     */
+    public static class RouterOutput {
+        private final int[][] topKIndices;    // [batch_size, topK]
+        private final float[][] topKWeights;  // [batch_size, topK]
+        private final float[][] allWeights;   // [batch_size, num_experts]
+        
+        public RouterOutput(int[][] topKIndices, float[][] topKWeights, float[][] allWeights) {
+            this.topKIndices = topKIndices;
+            this.topKWeights = topKWeights;
+            this.allWeights = allWeights;
+        }
+        
+        public int[][] getTopKIndices() {
+            return topKIndices;
+        }
+        
+        public float[][] getTopKWeights() {
+            return topKWeights;
+        }
+        
+        public float[][] getAllWeights() {
+            return allWeights;
+        }
+        
+        public int getBatchSize() {
+            return topKIndices.length;
+        }
+        
+        public int getTopK() {
+            return topKIndices[0].length;
+        }
+    }
+}

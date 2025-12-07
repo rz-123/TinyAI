@@ -1,6 +1,7 @@
 package io.leavesfly.tinyai.ml;
 
 import io.leavesfly.tinyai.func.Variable;
+import io.leavesfly.tinyai.ml.callback.TrainingCallback;
 import io.leavesfly.tinyai.ml.dataset.Batch;
 import io.leavesfly.tinyai.ml.dataset.DataSet;
 import io.leavesfly.tinyai.ml.evaluator.Evaluator;
@@ -9,6 +10,8 @@ import io.leavesfly.tinyai.ml.optimize.Optimizer;
 import io.leavesfly.tinyai.ml.parallel.GradientAggregator;
 import io.leavesfly.tinyai.ml.parallel.ParallelBatchProcessor;
 import io.leavesfly.tinyai.ml.parallel.ParallelTrainingUtils;
+import io.leavesfly.tinyai.ml.training.EarlyStopping;
+import io.leavesfly.tinyai.ml.training.GradientClipper;
 import io.leavesfly.tinyai.ndarr.NdArray;
 
 import java.util.ArrayList;
@@ -55,6 +58,20 @@ public class Trainer {
     private int parallelThreadCount;
     private ExecutorService executorService;
     private boolean enableParallelTraining;
+    
+    // 验证集相关配置
+    private DataSet validationSet;
+    private Evaluator validationEvaluator;
+    private int validationInterval = 1; // 每N个epoch评估一次
+    
+    // 早停机制
+    private EarlyStopping earlyStopping;
+    
+    // 梯度裁剪
+    private GradientClipper gradientClipper;
+    
+    // 回调机制
+    private List<TrainingCallback> callbacks = new ArrayList<>();
 
     /**
      * 构造器（默认不启用并行训练）
@@ -147,22 +164,31 @@ public class Trainer {
      * @param shuffleData 是否打乱数据
      */
     public void singleThreadTrain(boolean shuffleData) {
-
+        // 通知训练开始
+        notifyTrainingStart();
+        
         DataSet trainDataSet = dataSet.getTrainDataSet();
         if (shuffleData) {
             trainDataSet.shuffle();
         }
 
+        float finalLoss = 0f;
         for (int i = 0; i < maxEpoch; i++) {
+            // 检查是否应该停止
+            if (shouldStopTraining()) {
+                System.out.println("训练被回调提前停止");
+                break;
+            }
 
             model.resetState();
             monitor.startNewEpoch(i);
+            notifyEpochStart(i);
 
             List<Batch> batches = trainDataSet.getBatches();
             float lossSum = 0f;
-            float accSum = 0f;
 
-            for (Batch batch : batches) {
+            for (int batchIndex = 0; batchIndex < batches.size(); batchIndex++) {
+                Batch batch = batches.get(batchIndex);
                 Variable variableX = batch.toVariableX().setName("x").setRequireGrad(false);
                 Variable variableY = batch.toVariableY().setName("y").setRequireGrad(false);
 
@@ -171,19 +197,54 @@ public class Trainer {
                 lossVariable.setName("loss");
 
                 model.clearGrads();
-                lossSum += lossVariable.getValue().getNumber().floatValue();
+                float batchLoss = lossVariable.getValue().getNumber().floatValue();
+                lossSum += batchLoss;
 
                 lossVariable.backward();
+                
+                // 梯度裁剪
+                if (gradientClipper != null) {
+                    gradientClipper.clipGradients(model);
+                }
 
                 optimizer.update();
                 lossVariable.unChainBackward();
 
                 model.tmpPredict = predictY;
+                
+                // 通知批次结束
+                notifyBatchEnd(i, batchIndex, batchLoss);
             }
-            monitor.collectInfo(lossSum / batches.size());
+            
+            float avgLoss = lossSum / batches.size();
+            finalLoss = avgLoss;
+            monitor.collectInfo(avgLoss);
             monitor.endEpoch();
             monitor.printTrainInfo();
+            
+            // 验证集评估
+            if (validationSet != null && (i + 1) % validationInterval == 0) {
+                validate(i);
+            }
+            
+            // 早停检查
+            if (earlyStopping != null) {
+                float checkValue = validationSet != null ? 
+                    monitor.getValLossList().isEmpty() ? avgLoss : 
+                    monitor.getValLossList().get(monitor.getValLossList().size() - 1) : avgLoss;
+                
+                if (earlyStopping.shouldStop(checkValue, model)) {
+                    System.out.println("早停机制触发，训练提前结束");
+                    break;
+                }
+            }
+            
+            // 通知epoch结束
+            notifyEpochEnd(i, avgLoss, null);
         }
+        
+        // 通知训练结束
+        notifyTrainingEnd(maxEpoch, finalLoss);
         monitor.plot();
     }
 
@@ -350,6 +411,180 @@ public class Trainer {
      */
     public void evaluate() {
         evaluator.evaluate();
+    }
+    
+    /**
+     * 设置验证集
+     * 
+     * @param validationSet 验证集
+     * @param validationEvaluator 验证集评估器
+     * @param interval 验证间隔（每N个epoch评估一次）
+     */
+    public void setValidationSet(DataSet validationSet, Evaluator validationEvaluator, int interval) {
+        this.validationSet = validationSet;
+        this.validationEvaluator = validationEvaluator;
+        this.validationInterval = interval > 0 ? interval : 1;
+    }
+    
+    /**
+     * 设置早停机制
+     * 
+     * @param earlyStopping 早停对象
+     */
+    public void setEarlyStopping(EarlyStopping earlyStopping) {
+        this.earlyStopping = earlyStopping;
+    }
+    
+    /**
+     * 设置梯度裁剪
+     * 
+     * @param gradientClipper 梯度裁剪器
+     */
+    public void setGradientClipper(GradientClipper gradientClipper) {
+        this.gradientClipper = gradientClipper;
+    }
+    
+    /**
+     * 添加训练回调
+     * 
+     * @param callback 回调对象
+     */
+    public void addCallback(TrainingCallback callback) {
+        if (callback != null) {
+            callbacks.add(callback);
+        }
+    }
+    
+    /**
+     * 移除训练回调
+     * 
+     * @param callback 回调对象
+     */
+    public void removeCallback(TrainingCallback callback) {
+        callbacks.remove(callback);
+    }
+    
+    /**
+     * 执行验证集评估
+     * 
+     * @param epoch 当前轮次
+     */
+    private void validate(int epoch) {
+        if (validationSet == null || validationEvaluator == null) {
+            return;
+        }
+        
+        // 通知回调验证开始
+        for (TrainingCallback callback : callbacks) {
+            callback.onValidationStart(epoch);
+        }
+        
+        // 设置模型为评估模式
+        model.getModule().eval();
+        
+        // 计算验证损失
+        float valLoss = evaluateLoss(validationSet);
+        
+        // 执行验证评估
+        validationEvaluator.evaluate();
+        
+        // 获取验证准确率（如果可用）
+        // 注意：这里需要根据实际Evaluator实现获取准确率
+        // 如果Evaluator提供了获取准确率的方法，可以在这里调用
+        Float valAccuracy = null;
+        
+        // 收集验证信息到监控器
+        monitor.collectValLoss(valLoss);
+        // 如果获取到验证准确率，可以调用 monitor.collectValAccuracy(valAccuracy);
+        
+        // 通知回调验证结束
+        for (TrainingCallback callback : callbacks) {
+            callback.onValidationEnd(epoch, valLoss, valAccuracy);
+        }
+        
+        // 恢复训练模式
+        model.getModule().train();
+    }
+    
+    /**
+     * 评估数据集上的损失
+     * 
+     * @param dataSet 数据集
+     * @return 平均损失
+     */
+    private float evaluateLoss(DataSet dataSet) {
+        List<Batch> batches = dataSet.getBatches();
+        float lossSum = 0f;
+        
+        for (Batch batch : batches) {
+            Variable variableX = batch.toVariableX().setName("x").setRequireGrad(false);
+            Variable variableY = batch.toVariableY().setName("y").setRequireGrad(false);
+            
+            Variable predictY = model.forward(variableX);
+            Variable lossVariable = loss.loss(variableY, predictY);
+            
+            lossSum += lossVariable.getValue().getNumber().floatValue();
+        }
+        
+        return lossSum / batches.size();
+    }
+    
+    /**
+     * 通知回调训练开始
+     */
+    private void notifyTrainingStart() {
+        for (TrainingCallback callback : callbacks) {
+            callback.onTrainingStart();
+        }
+    }
+    
+    /**
+     * 通知回调训练结束
+     */
+    private void notifyTrainingEnd(int epoch, float finalLoss) {
+        for (TrainingCallback callback : callbacks) {
+            callback.onTrainingEnd(epoch, finalLoss);
+        }
+    }
+    
+    /**
+     * 通知回调epoch开始
+     */
+    private void notifyEpochStart(int epoch) {
+        for (TrainingCallback callback : callbacks) {
+            callback.onEpochStart(epoch);
+        }
+    }
+    
+    /**
+     * 通知回调epoch结束
+     */
+    private void notifyEpochEnd(int epoch, float loss, Float accuracy) {
+        for (TrainingCallback callback : callbacks) {
+            callback.onEpochEnd(epoch, loss, accuracy);
+        }
+    }
+    
+    /**
+     * 通知回调批次结束
+     */
+    private void notifyBatchEnd(int epoch, int batchIndex, float batchLoss) {
+        for (TrainingCallback callback : callbacks) {
+            callback.onBatchEnd(epoch, batchIndex, batchLoss);
+        }
+    }
+    
+    /**
+     * 检查是否应该停止训练
+     */
+    private boolean shouldStopTraining() {
+        // 检查回调
+        for (TrainingCallback callback : callbacks) {
+            if (callback.shouldStop()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -1,5 +1,8 @@
 package io.leavesfly.tinyai.ml;
 
+import io.leavesfly.tinyai.ml.exception.ModelSerializationException;
+import io.leavesfly.tinyai.ml.parameter.ParameterOperator;
+import io.leavesfly.tinyai.ml.util.ValidationUtils;
 import io.leavesfly.tinyai.nnet.Parameter;
 
 import java.io.*;
@@ -53,7 +56,7 @@ public class ModelSerializer {
                 }
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to save model: " + e.getMessage(), e);
+            throw new ModelSerializationException("Failed to save model: " + e.getMessage(), e);
         }
     }
 
@@ -75,10 +78,11 @@ public class ModelSerializer {
      * @return 加载的模型
      */
     public static Model loadModel(String filePath, boolean compressed) {
+        ValidationUtils.requireNonNull(filePath, "filePath");
         try {
             File file = new File(filePath);
             if (!file.exists()) {
-                throw new RuntimeException("Model file does not exist: " + filePath);
+                throw new ModelSerializationException("Model file does not exist: " + filePath);
             }
 
             if (compressed) {
@@ -94,7 +98,7 @@ public class ModelSerializer {
                 }
             }
         } catch (IOException | ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load model: " + e.getMessage(), e);
+            throw new ModelSerializationException("Failed to load model: " + e.getMessage(), e);
         }
     }
 
@@ -113,7 +117,7 @@ public class ModelSerializer {
             try {
                 return loadModel(filePath, true);
             } catch (Exception e2) {
-                throw new RuntimeException("Failed to load model, tried both compressed and uncompressed formats", e2);
+                throw new ModelSerializationException("Failed to load model, tried both compressed and uncompressed formats", e2);
             }
         }
     }
@@ -125,6 +129,8 @@ public class ModelSerializer {
      * @param filePath 保存路径
      */
     public static void saveParameters(Model model, String filePath) {
+        ValidationUtils.requireNonNull(model, "model");
+        ValidationUtils.requireNonNull(filePath, "filePath");
         try {
             File file = new File(filePath);
             createDirectoryIfNotExists(file.getParentFile());
@@ -136,7 +142,7 @@ public class ModelSerializer {
                 oos.writeObject(params);
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to save parameters: " + e.getMessage(), e);
+            throw new ModelSerializationException("Failed to save parameters: " + e.getMessage(), e);
         }
     }
 
@@ -148,10 +154,12 @@ public class ModelSerializer {
      */
     @SuppressWarnings("unchecked")
     public static void loadParameters(Model model, String filePath) {
+        ValidationUtils.requireNonNull(model, "model");
+        ValidationUtils.requireNonNull(filePath, "filePath");
         try {
             File file = new File(filePath);
             if (!file.exists()) {
-                throw new RuntimeException("Parameters file does not exist: " + filePath);
+                throw new ModelSerializationException("Parameters file does not exist: " + filePath);
             }
 
             Map<String, Parameter> loadedParams;
@@ -163,46 +171,32 @@ public class ModelSerializer {
             // 获取目标模型的参数
             Map<String, Parameter> modelParams = model.getAllParams();
 
-            // 加载匹配的参数
+            // 加载匹配的参数（使用统一的参数操作接口）
             int loadedCount = 0;
+            int skippedCount = 0;
             for (Map.Entry<String, Parameter> entry : loadedParams.entrySet()) {
                 String paramName = entry.getKey();
                 Parameter loadedParam = entry.getValue();
 
                 if (modelParams.containsKey(paramName)) {
                     Parameter modelParam = modelParams.get(paramName);
-                    // 检查形状是否匹配
-                    if (modelParam.getValue().getShape().equals(loadedParam.getValue().getShape())) {
-                        // 复制参数值
-                        if (loadedParam.getValue().getShape().getDimNum() == 2) {
-                            // 2D数组处理
-                            float[][] loadedData = loadedParam.getValue().getMatrix();
-                            for (int i = 0; i < loadedData.length; i++) {
-                                for (int j = 0; j < loadedData[i].length; j++) {
-                                    modelParam.getValue().set(loadedData[i][j], i, j);
-                                }
-                            }
-                        } else if (loadedParam.getValue().getShape().getDimNum() == 1) {
-                            // 1D数组处理
-                            float value = loadedParam.getValue().getNumber().floatValue();
-                            modelParam.getValue().set(value, 0);
-                        } else {
-                            // 标量处理
-                            float value = loadedParam.getValue().getNumber().floatValue();
-                            modelParam.getValue().set(value);
-                        }
+                    try {
+                        // 使用统一的参数复制接口（支持任意维度）
+                        ParameterOperator.copyParameter(loadedParam, modelParam);
                         loadedCount++;
-                    } else {
-                        System.out.println("警告: 参数 " + paramName + " 形状不匹配，跳过加载");
+                    } catch (Exception e) {
+                        System.out.println("警告: 参数 " + paramName + " 加载失败: " + e.getMessage());
+                        skippedCount++;
                     }
                 } else {
                     System.out.println("警告: 模型中不存在参数 " + paramName + "，跳过加载");
+                    skippedCount++;
                 }
             }
 
-            System.out.println("成功加载 " + loadedCount + " 个参数");
+            System.out.println("成功加载 " + loadedCount + " 个参数，跳过 " + skippedCount + " 个");
         } catch (IOException | ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load parameters: " + e.getMessage(), e);
+            throw new ModelSerializationException("Failed to load parameters: " + e.getMessage(), e);
         }
     }
 
@@ -231,7 +225,7 @@ public class ModelSerializer {
                 oos.writeObject(checkpoint);
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to save checkpoint: " + e.getMessage(), e);
+            throw new ModelSerializationException("Failed to save checkpoint: " + e.getMessage(), e);
         }
     }
 
@@ -254,7 +248,7 @@ public class ModelSerializer {
                 return (Map<String, Object>) ois.readObject();
             }
         } catch (IOException | ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load checkpoint: " + e.getMessage(), e);
+            throw new ModelSerializationException("Failed to load checkpoint: " + e.getMessage(), e);
         }
     }
 
@@ -313,26 +307,6 @@ public class ModelSerializer {
         }
     }
 
-    /**
-     * 将二维数组展平为一维数组
-     *
-     * @param matrix 二维数组
-     * @return 一维数组
-     */
-    private static float[] flatten2D(float[][] matrix) {
-        int rows = matrix.length;
-        int cols = matrix[0].length;
-        float[] result = new float[rows * cols];
-        
-        int index = 0;
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                result[index++] = matrix[i][j];
-            }
-        }
-        
-        return result;
-    }
 
     /**
      * 比较两个模型的参数
@@ -354,7 +328,7 @@ public class ModelSerializer {
             return false;
         }
 
-        // 检查每个参数是否相同
+        // 使用统一的参数比较接口（支持任意维度）
         for (Map.Entry<String, Parameter> entry : params1.entrySet()) {
             String paramName = entry.getKey();
             Parameter param1 = entry.getValue();
@@ -365,29 +339,9 @@ public class ModelSerializer {
 
             Parameter param2 = params2.get(paramName);
             
-            // 检查形状是否相同
-            if (!param1.getValue().getShape().equals(param2.getValue().getShape())) {
+            // 使用统一的参数比较方法
+            if (!ParameterOperator.compareParameter(param1, param2, 1e-7)) {
                 return false;
-            }
-
-            // 检查数值是否相同（使用较小的容差）
-            if (param1.getValue().getShape().getDimNum() == 2) {
-                float[][] matrix1 = param1.getValue().getMatrix();
-                float[][] matrix2 = param2.getValue().getMatrix();
-                
-                for (int i = 0; i < matrix1.length; i++) {
-                    for (int j = 0; j < matrix1[i].length; j++) {
-                        if (Math.abs(matrix1[i][j] - matrix2[i][j]) > 1e-7) {
-                            return false;
-                        }
-                    }
-                }
-            } else {
-                // 如果无法转换为矩阵，直接比较数值
-                if (Math.abs(param1.getValue().getNumber().floatValue() - 
-                           param2.getValue().getNumber().floatValue()) > 1e-7) {
-                    return false;
-                }
             }
         }
 

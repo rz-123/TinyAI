@@ -315,7 +315,7 @@ public class ModelSerializerTest {
     }
 
     /**
-     * 测试用的简单 Model 实现，不依赖 Block
+     * 测试用的简单 Model 实现
      */
     public static class SimpleTestModel extends Model implements java.io.Serializable {
         
@@ -323,8 +323,8 @@ public class ModelSerializerTest {
         private Map<String, Parameter> parameters;
 
         public SimpleTestModel() {
-            // 传入 null block，简化测试
-            super("SimpleTestModel", null);
+            // 传入一个简单的 TestBlock
+            super("SimpleTestModel", new TestBlock());
             parameters = new HashMap<>();
             
             // 添加测试参数

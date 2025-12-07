@@ -1,8 +1,11 @@
 package io.leavesfly.tinyai.ml.parallel;
 
 import io.leavesfly.tinyai.ml.Model;
+import io.leavesfly.tinyai.ml.exception.TrainingException;
+import io.leavesfly.tinyai.ml.parameter.ParameterOperator;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.nnet.Parameter;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -20,29 +23,91 @@ public class ParallelTrainingUtils {
     /**
      * 创建模型的深拷贝，用于多线程训练
      * 每个线程需要独立的模型实例来避免参数冲突
+     * <p>
+     * 优化策略：
+     * 1. 优先使用基于参数复制的方式（更快）
+     * 2. 如果失败，回退到序列化方式
      *
      * @param originalModel 原始模型
      * @return 深拷贝的模型实例
-     * @throws RuntimeException 如果拷贝失败
+     * @throws TrainingException 如果拷贝失败
      */
     public static Model deepCopyModel(Model originalModel) {
-        try {
-            // 使用序列化进行深拷贝
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ObjectOutputStream oos = new ObjectOutputStream(baos);
-            oos.writeObject(originalModel);
-            oos.close();
-
-            ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
-            ObjectInputStream ois = new ObjectInputStream(bais);
-            Model copiedModel = (Model) ois.readObject();
-            ois.close();
-
-            return copiedModel;
-
-        } catch (Exception e) {
-            throw new RuntimeException("模型深拷贝失败: " + e.getMessage(), e);
+        if (originalModel == null) {
+            throw new IllegalArgumentException("原始模型不能为空");
         }
+        
+        try {
+            // 方案1：基于参数复制（更快，避免序列化开销）
+            return deepCopyModelByParameters(originalModel);
+        } catch (Exception e) {
+            // 方案2：回退到序列化方式（兼容性更好）
+            try {
+                return deepCopyModelBySerialization(originalModel);
+            } catch (Exception e2) {
+                throw new TrainingException("模型深拷贝失败: " + e2.getMessage(), e2);
+            }
+        }
+    }
+    
+    /**
+     * 基于参数复制的模型深拷贝（优化方案）
+     * 
+     * @param originalModel 原始模型
+     * @return 深拷贝的模型
+     */
+    private static Model deepCopyModelByParameters(Model originalModel) {
+        // 获取原始模型的Module
+        Module originalModule = originalModel.getModule();
+        
+        // 创建新模型（使用相同的Module结构，但参数会被复制）
+        Model copiedModel = new Model(originalModel.getName() + "_copy", originalModule);
+        
+        // 复制所有参数
+        Map<String, Parameter> originalParams = originalModel.getAllParams();
+        Map<String, Parameter> copiedParams = copiedModel.getAllParams();
+        
+        for (Map.Entry<String, Parameter> entry : originalParams.entrySet()) {
+            String paramName = entry.getKey();
+            Parameter originalParam = entry.getValue();
+            
+            if (copiedParams.containsKey(paramName)) {
+                Parameter copiedParam = copiedParams.get(paramName);
+                try {
+                    // 使用统一的参数复制接口
+                    ParameterOperator.copyParameter(originalParam, copiedParam);
+                } catch (Exception e) {
+                    throw new TrainingException("复制参数 " + paramName + " 失败: " + e.getMessage(), e);
+                }
+            }
+        }
+        
+        // 复制模型信息
+        if (originalModel.getModelInfo() != null) {
+            copiedModel.setModelInfo(originalModel.getModelInfo());
+        }
+        
+        return copiedModel;
+    }
+    
+    /**
+     * 基于序列化的模型深拷贝（备用方案）
+     * 
+     * @param originalModel 原始模型
+     * @return 深拷贝的模型
+     */
+    private static Model deepCopyModelBySerialization(Model originalModel) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(originalModel);
+        oos.close();
+
+        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
+        ObjectInputStream ois = new ObjectInputStream(bais);
+        Model copiedModel = (Model) ois.readObject();
+        ois.close();
+
+        return copiedModel;
     }
 
     /**

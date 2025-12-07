@@ -1,0 +1,5 @@
+{"conversations": [{"role": "user", "content": "什么是深度学习?"}, {"role": "assistant", "content": "深度学习是机器学习的一个分支,使用多层神经网络来学习数据的表示。"}]}
+{"conversations": [{"role": "user", "content": "Transformer是什么?"}, {"role": "assistant", "content": "Transformer是一种基于注意力机制的神经网络架构,广泛应用于自然语言处理任务。"}]}
+{"conversations": [{"role": "user", "content": "什么是LoRA?"}, {"role": "assistant", "content": "LoRA是低秩适配技术,通过训练少量参数实现模型微调,大幅降低计算成本。"}]}
+{"conversations": [{"role": "user", "content": "如何训练语言模型?"}, {"role": "assistant", "content": "语言模型训练包括预训练和微调两个阶段,预训练学习通用知识,微调适配特定任务。"}]}
+{"conversations": [{"role": "user", "content": "什么是注意力机制?"}, {"role": "assistant", "content": "注意力机制让模型聚焦于输入的重要部分,是Transformer架构的核心。"}]}

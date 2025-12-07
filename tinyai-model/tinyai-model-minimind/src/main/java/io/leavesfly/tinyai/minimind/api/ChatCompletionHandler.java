@@ -1,0 +1,246 @@
+package io.leavesfly.tinyai.minimind.api;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+
+import java.io.IOException;
+import java.util.*;
+
+/**
+ * Chat Completion API处理器
+ * 
+ * 实现OpenAI兼容的/v1/chat/completions端点
+ * 支持多轮对话功能
+ * 
+ * API格式:
+ * ```json
+ * POST /v1/chat/completions
+ * {
+ *   "model": "minimind",
+ *   "messages": [
+ *     {"role": "system", "content": "You are a helpful assistant."},
+ *     {"role": "user", "content": "Hello!"}
+ *   ],
+ *   "max_tokens": 100,
+ *   "temperature": 0.7,
+ *   "top_p": 0.9,
+ *   "stream": false
+ * }
+ * ```
+ * 
+ * @author leavesfly
+ * @since 2024
+ */
+public class ChatCompletionHandler implements HttpHandler {
+    
+    @Override
+    public void handle(HttpExchange exchange) throws IOException {
+        // 处理OPTIONS预检请求
+        if ("OPTIONS".equals(exchange.getRequestMethod())) {
+            handleOptions(exchange);
+            return;
+        }
+        
+        // 只支持POST
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendError(exchange, 405, "Method Not Allowed");
+            return;
+        }
+        
+        try {
+            // 读取请求
+            String requestBody = MiniMindAPIServer.readRequestBody(exchange);
+            Map<String, Object> request = SimpleJSON.parseJSON(requestBody);
+            
+            // 解析参数
+            String model = (String) request.getOrDefault("model", "minimind");
+            Object messagesObj = request.get("messages");
+            int maxTokens = getInt(request, "max_tokens", 100);
+            double temperature = getDouble(request, "temperature", 0.7);
+            double topP = getDouble(request, "top_p", 0.9);
+            boolean stream = getBoolean(request, "stream", false);
+            
+            // 解析消息列表
+            if (!(messagesObj instanceof List)) {
+                sendError(exchange, 400, "Messages must be an array");
+                return;
+            }
+            
+            List<?> messagesList = (List<?>) messagesObj;
+            if (messagesList.isEmpty()) {
+                sendError(exchange, 400, "Messages array is empty");
+                return;
+            }
+            
+            // 转换消息格式
+            List<ChatMessage> messages = parseMessages(messagesList);
+            
+            // 生成回复
+            String reply = generateChatReply(messages, maxTokens, temperature, topP);
+            
+            // 构建响应
+            Map<String, Object> response = buildChatResponse(model, messages, reply);
+            
+            // 发送响应
+            String json = SimpleJSON.toJSON(response);
+            MiniMindAPIServer.sendJSONResponse(exchange, 200, json);
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            sendError(exchange, 500, "Internal Server Error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 解析消息列表
+     */
+    private List<ChatMessage> parseMessages(List<?> messagesList) {
+        List<ChatMessage> messages = new ArrayList<>();
+        
+        for (Object msgObj : messagesList) {
+            if (msgObj instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> msgMap = (Map<String, Object>) msgObj;
+                String role = msgMap.containsKey("role") ? String.valueOf(msgMap.get("role")) : "user";
+                String content = msgMap.containsKey("content") ? String.valueOf(msgMap.get("content")) : "";
+                messages.add(new ChatMessage(role, content));
+            }
+        }
+        
+        return messages;
+    }
+    
+    /**
+     * 生成对话回复(占位实现)
+     * 
+     * TODO: 集成实际的MiniMind模型
+     */
+    private String generateChatReply(List<ChatMessage> messages, int maxTokens, 
+                                    double temperature, double topP) {
+        // 占位实现:返回示例回复
+        StringBuilder context = new StringBuilder();
+        for (ChatMessage msg : messages) {
+            context.append(msg.role).append(": ").append(msg.content).append("\n");
+        }
+        
+        return "[Generated reply based on conversation]\n" +
+               "This is a placeholder response. Please integrate actual MiniMind model.\n" +
+               "Context:\n" + context.toString();
+    }
+    
+    /**
+     * 构建OpenAI格式响应
+     */
+    private Map<String, Object> buildChatResponse(String model, List<ChatMessage> messages, String reply) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", "chatcmpl-" + UUID.randomUUID().toString());
+        response.put("object", "chat.completion");
+        response.put("created", System.currentTimeMillis() / 1000);
+        response.put("model", model);
+        
+        // Choices数组
+        List<Map<String, Object>> choices = new ArrayList<>();
+        Map<String, Object> choice = new LinkedHashMap<>();
+        
+        // Message对象
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "assistant");
+        message.put("content", reply);
+        
+        choice.put("index", 0);
+        choice.put("message", message);
+        choice.put("finish_reason", "stop");
+        choices.add(choice);
+        response.put("choices", choices);
+        
+        // Usage统计
+        int promptTokens = messages.stream()
+            .mapToInt(m -> estimateTokens(m.content))
+            .sum();
+        int completionTokens = estimateTokens(reply);
+        
+        Map<String, Object> usage = new LinkedHashMap<>();
+        usage.put("prompt_tokens", promptTokens);
+        usage.put("completion_tokens", completionTokens);
+        usage.put("total_tokens", promptTokens + completionTokens);
+        response.put("usage", usage);
+        
+        return response;
+    }
+    
+    /**
+     * 估算Token数量(简化实现)
+     */
+    private int estimateTokens(String text) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        return text.split("\\s+").length;
+    }
+    
+    /**
+     * 获取整数参数
+     */
+    private int getInt(Map<String, Object> map, String key, int defaultValue) {
+        Object value = map.get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof Number) return ((Number) value).intValue();
+        return defaultValue;
+    }
+    
+    /**
+     * 获取浮点参数
+     */
+    private double getDouble(Map<String, Object> map, String key, double defaultValue) {
+        Object value = map.get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof Number) return ((Number) value).doubleValue();
+        return defaultValue;
+    }
+    
+    /**
+     * 获取布尔参数
+     */
+    private boolean getBoolean(Map<String, Object> map, String key, boolean defaultValue) {
+        Object value = map.get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof Boolean) return (Boolean) value;
+        return defaultValue;
+    }
+    
+    /**
+     * 处理OPTIONS请求
+     */
+    private void handleOptions(HttpExchange exchange) throws IOException {
+        MiniMindAPIServer.addCORSHeaders(exchange);
+        exchange.sendResponseHeaders(204, -1);
+    }
+    
+    /**
+     * 发送错误响应
+     */
+    private void sendError(HttpExchange exchange, int statusCode, String message) throws IOException {
+        Map<String, Object> error = new LinkedHashMap<>();
+        error.put("error", Map.of(
+            "message", message,
+            "type", "invalid_request_error",
+            "code", statusCode
+        ));
+        
+        String json = SimpleJSON.toJSON(error);
+        MiniMindAPIServer.sendJSONResponse(exchange, statusCode, json);
+    }
+    
+    /**
+     * 聊天消息
+     */
+    private static class ChatMessage {
+        String role;
+        String content;
+        
+        ChatMessage(String role, String content) {
+            this.role = role;
+            this.content = content;
+        }
+    }
+}

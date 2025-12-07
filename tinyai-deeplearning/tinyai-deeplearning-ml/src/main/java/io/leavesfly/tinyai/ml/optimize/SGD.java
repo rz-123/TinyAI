@@ -34,4 +34,22 @@ public class SGD extends Optimizer {
         }
         parameter.setValue(parameter.getValue().sub(parameter.getGrad().mulNum(lr)));
     }
+    
+    /**
+     * 设置学习率（用于学习率调度器）
+     * 
+     * @param learningRate 新的学习率
+     */
+    public void setLearningRate(float learningRate) {
+        this.lr = learningRate;
+    }
+    
+    /**
+     * 获取当前学习率
+     * 
+     * @return 当前学习率
+     */
+    public float getLearningRate() {
+        return lr;
+    }
 }

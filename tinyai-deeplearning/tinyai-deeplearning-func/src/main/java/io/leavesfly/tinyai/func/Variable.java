@@ -504,6 +504,101 @@ public class Variable implements Serializable {
     }
 
     /**
+     * GELU激活函数运算
+     * <p>
+     * Gaussian Error Linear Unit，常用于Transformer模型
+     * GELU(x) = x * Φ(x) ≈ x * 0.5 * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))
+     *
+     * @return GELU运算结果的新变量
+     */
+    public Variable gelu() {
+        Function function = new GELU();
+        return function.call(this);
+    }
+
+    /**
+     * SiLU激活函数运算（Swish）
+     * <p>
+     * Sigmoid Linear Unit，自门控激活函数
+     * SiLU(x) = x * sigmoid(x)
+     *
+     * @return SiLU运算结果的新变量
+     */
+    public Variable silu() {
+        Function function = new SiLU();
+        return function.call(this);
+    }
+
+    /**
+     * LeakyReLU激活函数运算
+     * <p>
+     * ReLU的改进版本，解决神经元死亡问题
+     * LeakyReLU(x) = max(negative_slope * x, x)
+     *
+     * @param negativeSlope 负斜率参数，默认0.01
+     * @return LeakyReLU运算结果的新变量
+     */
+    public Variable leakyRelu(float negativeSlope) {
+        Function function = new LeakyReLU(negativeSlope);
+        return function.call(this);
+    }
+
+    /**
+     * LeakyReLU激活函数运算（默认negativeSlope=0.01）
+     *
+     * @return LeakyReLU运算结果的新变量
+     */
+    public Variable leakyRelu() {
+        return leakyRelu(0.01f);
+    }
+
+    /**
+     * ELU激活函数运算
+     * <p>
+     * Exponential Linear Unit，具有负值饱和特性
+     * ELU(x) = x if x >= 0, else alpha * (exp(x) - 1)
+     *
+     * @param alpha alpha参数，默认1.0
+     * @return ELU运算结果的新变量
+     */
+    public Variable elu(float alpha) {
+        Function function = new ELU(alpha);
+        return function.call(this);
+    }
+
+    /**
+     * ELU激活函数运算（默认alpha=1.0）
+     *
+     * @return ELU运算结果的新变量
+     */
+    public Variable elu() {
+        return elu(1.0f);
+    }
+
+    /**
+     * LogSoftmax激活函数运算
+     * <p>
+     * Softmax的对数形式，常用于NLLLoss组合
+     * LogSoftmax(x) = log(softmax(x))
+     *
+     * @param axis 计算轴，默认-1表示最后一维
+     * @return LogSoftmax运算结果的新变量
+     */
+    public Variable logSoftmax(int axis) {
+        Function function = new LogSoftmax(axis);
+        return function.call(this);
+    }
+
+    /**
+     * LogSoftmax激活函数运算（默认axis=-1）
+     *
+     * @return LogSoftmax运算结果的新变量
+     */
+    public Variable logSoftmax() {
+        return logSoftmax(-1);
+    }
+
+    /**
      * 裁剪运算
      * <p>
      * 将变量的值限制在指定范围内

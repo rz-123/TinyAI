@@ -49,6 +49,63 @@ public final class Functional {
         return input.softMax();
     }
 
+    /**
+     * GELU激活函数
+     * GELU(x) = x * Φ(x) ≈ 0.5 * x * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))
+     */
+    public static Variable gelu(Variable input) {
+        Objects.requireNonNull(input, "input cannot be null");
+        return input.gelu();
+    }
+
+    /**
+     * SiLU激活函数（Swish）
+     * SiLU(x) = x * sigmoid(x)
+     */
+    public static Variable silu(Variable input) {
+        Objects.requireNonNull(input, "input cannot be null");
+        return input.silu();
+    }
+
+    /**
+     * LeakyReLU激活函数
+     * LeakyReLU(x) = max(negative_slope * x, x)
+     */
+    public static Variable leakyRelu(Variable input, float negativeSlope) {
+        Objects.requireNonNull(input, "input cannot be null");
+        return input.leakyRelu(negativeSlope);
+    }
+
+    public static Variable leakyRelu(Variable input) {
+        return leakyRelu(input, 0.01f);
+    }
+
+    /**
+     * ELU激活函数
+     * ELU(x) = x if x >= 0, else alpha * (exp(x) - 1)
+     */
+    public static Variable elu(Variable input, float alpha) {
+        Objects.requireNonNull(input, "input cannot be null");
+        return input.elu(alpha);
+    }
+
+    public static Variable elu(Variable input) {
+        return elu(input, 1.0f);
+    }
+
+    /**
+     * LogSoftmax激活函数
+     * LogSoftmax(x) = log(softmax(x))
+     */
+    public static Variable logSoftmax(Variable input, int axis) {
+        Objects.requireNonNull(input, "input cannot be null");
+        return input.logSoftmax(axis);
+    }
+
+    public static Variable logSoftmax(Variable input) {
+        return logSoftmax(input, -1);
+    }
+
     /* --------------------------------- 线性与正则 --------------------------------- */
 
     public static Variable linear(Variable input, Variable weight) {
@@ -104,6 +161,32 @@ public final class Functional {
 
     public static Variable layerNorm(Variable input, Variable gamma, Variable beta) {
         return layerNorm(input, gamma, beta, 1e-5f);
+    }
+
+    /**
+     * RMSNorm 前向：y = x / RMS(x) * weight
+     * RMS(x) = sqrt(mean(x^2) + eps)
+     *
+     * @param input  输入张量
+     * @param weight 缩放参数
+     * @param eps    数值稳定项
+     */
+    public static Variable rmsNorm(Variable input, Variable weight, float eps) {
+        Objects.requireNonNull(input, "input cannot be null");
+        Objects.requireNonNull(weight, "weight cannot be null");
+
+        // x^2
+        Variable xSquared = input.mul(input);
+        // mean(x^2)
+        Variable meanSquared = xSquared.mean(-1, true);
+        // RMS = sqrt(mean(x^2) + eps)
+        Variable rms = meanSquared.add(new Variable(eps)).sqrt();
+        // x / RMS * weight
+        return input.div(rms).mul(weight);
+    }
+
+    public static Variable rmsNorm(Variable input, Variable weight) {
+        return rmsNorm(input, weight, 1e-6f);
     }
 
     /**
@@ -225,6 +308,191 @@ public final class Functional {
         } else {
             throw new IllegalArgumentException("Embedding only supports 1D or 2D index tensors, got shape: " + idxValue.getShape());
         }
+    }
+
+    /* --------------------------------- 注意力 --------------------------------- */
+
+    /**
+     * 缩放点积注意力
+     * Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V
+     *
+     * @param query    查询张量 (batch, seq_len, d_k) 或 (batch, heads, seq_len, d_k)
+     * @param key      键张量
+     * @param value    值张量
+     * @param attnMask 注意力掩码（可选，被屏蔽位置应为-inf或很大的负数）
+     * @param dropout  dropout比率
+     * @param training 是否训练模式
+     */
+    public static Variable scaledDotProductAttention(Variable query, Variable key, Variable value,
+                                                     Variable attnMask, float dropout, boolean training) {
+        Objects.requireNonNull(query, "query cannot be null");
+        Objects.requireNonNull(key, "key cannot be null");
+        Objects.requireNonNull(value, "value cannot be null");
+
+        // 获取d_k用于缩放
+        int[] qShape = query.getValue().getShape().getShapeDims();
+        int dK = qShape[qShape.length - 1];
+
+        // Q * K^T
+        Variable scores = query.matMul(key.transpose());
+
+        // 缩放
+        double scale = Math.sqrt(dK);
+        Variable scaledScores = scores.div(new Variable((float) scale));
+
+        // 应用掩码
+        if (attnMask != null) {
+            scaledScores = scaledScores.add(attnMask);
+        }
+
+        // Softmax
+        Variable attnWeights = scaledScores.softMax();
+
+        // Dropout
+        if (training && dropout > 0) {
+            attnWeights = dropout(attnWeights, dropout, true);
+        }
+
+        // 加权求和
+        return attnWeights.matMul(value);
+    }
+
+    public static Variable scaledDotProductAttention(Variable query, Variable key, Variable value) {
+        return scaledDotProductAttention(query, key, value, null, 0f, false);
+    }
+
+    public static Variable scaledDotProductAttention(Variable query, Variable key, Variable value, Variable attnMask) {
+        return scaledDotProductAttention(query, key, value, attnMask, 0f, false);
+    }
+
+    /* --------------------------------- 损失函数 --------------------------------- */
+
+    /**
+     * 交叉熵损失（带LogSoftmax）
+     * CrossEntropy(input, target) = NLLLoss(LogSoftmax(input), target)
+     *
+     * @param input  模型输出 (batch, num_classes)
+     * @param target 目标标签 (batch,) 或 (batch, num_classes) one-hot
+     */
+    public static Variable crossEntropyLoss(Variable input, Variable target) {
+        Objects.requireNonNull(input, "input cannot be null");
+        Objects.requireNonNull(target, "target cannot be null");
+
+        // LogSoftmax
+        Variable logProbs = input.logSoftmax(-1);
+
+        // 负对数似然
+        return nllLoss(logProbs, target);
+    }
+
+    /**
+     * 负对数似然损失
+     *
+     * @param input  对数概率 (batch, num_classes)
+     * @param target 目标标签 (batch,) 整数索引
+     */
+    public static Variable nllLoss(Variable input, Variable target) {
+        Objects.requireNonNull(input, "input cannot be null");
+        Objects.requireNonNull(target, "target cannot be null");
+
+        NdArray inputData = input.getValue();
+        NdArray targetData = target.getValue();
+
+        int batchSize = inputData.getShape().getShapeDims()[0];
+        int numClasses = inputData.getShape().getShapeDims()[1];
+
+        float[] losses = new float[1];
+        float totalLoss = 0;
+
+        float[] inputArr = inputData.getArray();
+        float[] targetArr = targetData.getArray();
+
+        for (int i = 0; i < batchSize; i++) {
+            int targetIdx = (int) targetArr[i];
+            if (targetIdx >= 0 && targetIdx < numClasses) {
+                totalLoss -= inputArr[i * numClasses + targetIdx];
+            }
+        }
+
+        losses[0] = totalLoss / batchSize;
+        return new Variable(NdArray.of(losses, Shape.of(1)));
+    }
+
+    /**
+     * 均方误差损失
+     * MSE(input, target) = mean((input - target)^2)
+     */
+    public static Variable mseLoss(Variable input, Variable target) {
+        Objects.requireNonNull(input, "input cannot be null");
+        Objects.requireNonNull(target, "target cannot be null");
+
+        Variable diff = input.sub(target);
+        Variable squared = diff.mul(diff);
+        // 计算所有元素的均值
+        NdArray squaredData = squared.getValue();
+        float sum = 0;
+        float[] arr = squaredData.getArray();
+        for (float v : arr) {
+            sum += v;
+        }
+        return new Variable(NdArray.of(new float[]{sum / arr.length}, Shape.of(1)));
+    }
+
+    /**
+     * 二元交叉熵损失（需要输入已经过sigmoid）
+     * BCE(input, target) = -mean(target * log(input) + (1 - target) * log(1 - input))
+     */
+    public static Variable binaryCrossEntropyLoss(Variable input, Variable target) {
+        Objects.requireNonNull(input, "input cannot be null");
+        Objects.requireNonNull(target, "target cannot be null");
+
+        // 添加小常数避免log(0)
+        float eps = 1e-7f;
+        Variable inputClipped = input.clip(eps, 1 - eps);
+
+        Variable logInput = inputClipped.log();
+        Variable logOneMinusInput = inputClipped.neg().add(new Variable(1f)).log();
+
+        Variable term1 = target.mul(logInput);
+        Variable term2 = target.neg().add(new Variable(1f)).mul(logOneMinusInput);
+
+        Variable loss = term1.add(term2).neg();
+        // 计算均值
+        NdArray lossData = loss.getValue();
+        float sum = 0;
+        float[] arr = lossData.getArray();
+        for (float v : arr) {
+            sum += v;
+        }
+        return new Variable(NdArray.of(new float[]{sum / arr.length}, Shape.of(1)));
+    }
+
+    /**
+     * 带Logits的二元交叉熵损失
+     * BCEWithLogits(input, target) = BCE(sigmoid(input), target)
+     * 使用更数值稳定的计算
+     */
+    public static Variable binaryCrossEntropyWithLogitsLoss(Variable input, Variable target) {
+        Objects.requireNonNull(input, "input cannot be null");
+        Objects.requireNonNull(target, "target cannot be null");
+
+        // max(input, 0) - input * target + log(1 + exp(-abs(input)))
+        Variable maxInputZero = input.clip(0, Float.MAX_VALUE);
+        Variable term1 = maxInputZero.sub(input.mul(target));
+
+        // log(1 + exp(-abs(input)))
+        Variable absInput = input.clip(0, Float.MAX_VALUE).sub(input.clip(Float.MIN_VALUE, 0).neg());
+        Variable term2 = absInput.neg().exp().add(new Variable(1f)).log();
+
+        Variable loss = term1.add(term2);
+        // 计算均值
+        NdArray lossData = loss.getValue();
+        float sum = 0;
+        float[] arr = lossData.getArray();
+        for (float v : arr) {
+            sum += v;
+        }
+        return new Variable(NdArray.of(new float[]{sum / arr.length}, Shape.of(1)));
     }
 }
 
