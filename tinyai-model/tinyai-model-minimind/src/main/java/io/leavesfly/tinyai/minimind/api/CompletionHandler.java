@@ -2,6 +2,9 @@ package io.leavesfly.tinyai.minimind.api;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import io.leavesfly.tinyai.minimind.model.MiniMindConfig;
+import io.leavesfly.tinyai.minimind.model.MiniMindModel;
+import io.leavesfly.tinyai.minimind.tokenizer.MiniMindTokenizer;
 
 import java.io.IOException;
 import java.util.*;
@@ -29,6 +32,25 @@ import java.util.*;
  * @since 2024
  */
 public class CompletionHandler implements HttpHandler {
+    
+    // 共享的模型实例（避免重复加载）
+    private static MiniMindModel sharedModel;
+    private static MiniMindTokenizer sharedTokenizer;
+    
+    static {
+        // 初始化共享模型
+        try {
+            MiniMindConfig config = MiniMindConfig.createSmallConfig();
+            sharedModel = new MiniMindModel("minimind-api", config);
+            sharedTokenizer = MiniMindTokenizer.createCharLevelTokenizer(
+                config.getVocabSize(), config.getMaxSeqLen()
+            );
+            sharedModel.setTraining(false);
+            System.out.println("API模型初始化完成");
+        } catch (Exception e) {
+            System.err.println("模型初始化失败: " + e.getMessage());
+        }
+    }
     
     @Override
     public void handle(HttpExchange exchange) throws IOException {
@@ -92,17 +114,46 @@ public class CompletionHandler implements HttpHandler {
     }
     
     /**
-     * 生成文本(占位实现)
-     * 
-     * TODO: 集成实际的MiniMind模型
+     * 生成文本（集成实际的MiniMind模型）
      */
     private String generateText(String prompt, int maxTokens, double temperature, double topP) {
-        // 占位实现:返回示例文本
-        return "[Generated text based on prompt: \"" + prompt + "\"]\n" +
-               "This is a placeholder response. Please integrate actual MiniMind model.\n" +
-               "Parameters: max_tokens=" + maxTokens + 
-               ", temperature=" + temperature + 
-               ", top_p=" + topP;
+        try {
+            if (sharedModel == null || sharedTokenizer == null) {
+                return "[Error: Model not initialized]";
+            }
+                
+            // 1. 编码输入
+            List<Integer> promptIds = sharedTokenizer.encode(prompt, false, false);
+            int[] promptArray = promptIds.stream().mapToInt(i -> i).toArray();
+                
+            // 2. 调用模型生成
+            int[] generated = sharedModel.generate(
+                promptArray,
+                maxTokens,
+                (float) temperature,
+                0,  // topK
+                (float) topP
+            );
+                
+            // 3. 解码输出
+            List<Integer> genIds = new ArrayList<>();
+            for (int id : generated) {
+                genIds.add(id);
+            }
+            String fullText = sharedTokenizer.decode(genIds, true);
+                
+            // 4. 提取生成部分（移除prompt）
+            String generatedPart = fullText;
+            if (fullText.length() > prompt.length()) {
+                generatedPart = fullText.substring(prompt.length());
+            }
+                
+            return generatedPart;
+                
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "[Error: " + e.getMessage() + "]";
+        }
     }
     
     /**

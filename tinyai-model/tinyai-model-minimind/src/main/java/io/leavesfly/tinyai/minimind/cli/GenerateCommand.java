@@ -2,6 +2,12 @@ package io.leavesfly.tinyai.minimind.cli;
 
 import io.leavesfly.tinyai.minimind.cli.MiniMindCLI.Command;
 import io.leavesfly.tinyai.minimind.cli.MiniMindCLI.ArgParser;
+import io.leavesfly.tinyai.minimind.model.MiniMindConfig;
+import io.leavesfly.tinyai.minimind.model.MiniMindModel;
+import io.leavesfly.tinyai.minimind.tokenizer.MiniMindTokenizer;
+
+import java.io.File;
+import java.util.List;
 
 /**
  * 文本生成命令
@@ -37,11 +43,85 @@ public class GenerateCommand implements Command {
         System.out.println("=".repeat(60));
         System.out.println();
         
-        // TODO: 实际生成逻辑
-        System.out.println("生成结果: (功能开发中)");
-        System.out.println(prompt + " [模型生成的文本...]");
-        
-        System.out.println("\n提示: 文本生成功能开发中,请参考 Example06-文本生成策略.java");
+        // 实际生成逻辑
+        try {
+            // 1. 加载或创建模型
+            MiniMindModel model;
+            MiniMindTokenizer tokenizer;
+            
+            if (new File(modelPath).exists()) {
+                System.out.println("正在加载模型: " + modelPath);
+                // TODO: 实现模型加载逻辑
+                // model = MiniMindModel.load(modelPath);
+                // tokenizer = MiniMindTokenizer.load(modelPath + "/tokenizer.json");
+                System.out.println("[注意] 模型加载功能开发中,使用默认配置");
+                MiniMindConfig config = MiniMindConfig.createSmallConfig();
+                model = new MiniMindModel("minimind-generate", config);
+                tokenizer = MiniMindTokenizer.createCharLevelTokenizer(
+                    config.getVocabSize(), config.getMaxSeqLen()
+                );
+            } else {
+                System.out.println("模型文件不存在,使用默认配置");
+                MiniMindConfig config = MiniMindConfig.createSmallConfig();
+                model = new MiniMindModel("minimind-generate", config);
+                tokenizer = MiniMindTokenizer.createCharLevelTokenizer(
+                    config.getVocabSize(), config.getMaxSeqLen()
+                );
+            }
+            
+            // 2. 编码输入
+            List<Integer> promptIds = tokenizer.encode(prompt, false, false);
+            int[] promptArray = promptIds.stream().mapToInt(i -> i).toArray();
+            
+            System.out.println("开始生成...");
+            long startTime = System.currentTimeMillis();
+            
+            // 3. 调用模型生成
+            int[] generated = model.generate(
+                promptArray,
+                maxLength,
+                temperature,
+                topK,
+                temperature > 0 ? 0.9f : 0.0f  // topP
+            );
+            
+            long endTime = System.currentTimeMillis();
+            
+            // 4. 解码输出
+            List<Integer> genIds = new java.util.ArrayList<>();
+            for (int id : generated) {
+                genIds.add(id);
+            }
+            String result = tokenizer.decode(genIds, true);
+            
+            // 5. 输出结果
+            System.out.println("生成结果:");
+            System.out.println("-".repeat(60));
+            System.out.println(result);
+            System.out.println("-".repeat(60));
+            
+            // 6. 统计信息
+            int generatedTokens = generated.length - promptArray.length;
+            double elapsedSeconds = (endTime - startTime) / 1000.0;
+            double tokensPerSecond = generatedTokens / elapsedSeconds;
+            
+            System.out.println("\n统计信息:");
+            System.out.println("  - 生成Token数: " + generatedTokens);
+            System.out.println("  - 总Token数: " + generated.length);
+            System.out.println("  - 耗时: " + String.format("%.2f", elapsedSeconds) + "秒");
+            System.out.println("  - 速度: " + String.format("%.2f", tokensPerSecond) + " tokens/秒");
+            
+            if (!new File(modelPath).exists()) {
+                System.out.println("\n[提示] 当前使用随机初始化模型,输出为随机文本");
+                System.out.println("       请先训练模型或加载预训练权重以获得有意义的输出");
+                System.out.println("       参考: Example05-预训练流程.java");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("生成失败: " + e.getMessage());
+            e.printStackTrace();
+            System.out.println("\n提示: 请参考 Example06-文本生成策略.java");
+        }
     }
     
     @Override

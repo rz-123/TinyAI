@@ -2,6 +2,13 @@ package io.leavesfly.tinyai.minimind.cli;
 
 import io.leavesfly.tinyai.minimind.cli.MiniMindCLI.Command;
 import io.leavesfly.tinyai.minimind.cli.MiniMindCLI.ArgParser;
+import io.leavesfly.tinyai.minimind.model.MiniMindConfig;
+import io.leavesfly.tinyai.minimind.model.MiniMindModel;
+import io.leavesfly.tinyai.minimind.tokenizer.MiniMindTokenizer;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 
 /**
@@ -31,7 +38,46 @@ public class ChatCommand implements Command {
         System.out.println("=".repeat(60));
         System.out.println();
         
-        // TODO: 加载模型
+        // 加载模型
+        MiniMindModel model;
+        MiniMindTokenizer tokenizer;
+        
+        try {
+            if (new File(modelPath).exists()) {
+                System.out.println("正在加载模型: " + modelPath);
+                // TODO: 实现模型加载逻辑
+                // model = MiniMindModel.load(modelPath);
+                // tokenizer = MiniMindTokenizer.load(modelPath + "/tokenizer.json");
+                System.out.println("[注意] 模型加载功能开发中,使用默认配置");
+                MiniMindConfig config = MiniMindConfig.createSmallConfig();
+                model = new MiniMindModel("minimind-chat", config);
+                tokenizer = MiniMindTokenizer.createCharLevelTokenizer(
+                    config.getVocabSize(), config.getMaxSeqLen()
+                );
+            } else {
+                System.out.println("模型文件不存在,使用默认配置");
+                MiniMindConfig config = MiniMindConfig.createSmallConfig();
+                model = new MiniMindModel("minimind-chat", config);
+                tokenizer = MiniMindTokenizer.createCharLevelTokenizer(
+                    config.getVocabSize(), config.getMaxSeqLen()
+                );
+            }
+            
+            System.out.println("模型加载完成!");
+            
+            if (!new File(modelPath).exists()) {
+                System.out.println("\n[提示] 当前使用随机初始化模型,回复为随机文本");
+                System.out.println("       请先训练模型或加载预训练权重\n");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("模型加载失败: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
+        
+        // 对话历史
+        List<String> conversationHistory = new ArrayList<>();
         
         Scanner scanner = new Scanner(System.in);
         while (true) {
@@ -47,9 +93,56 @@ public class ChatCommand implements Command {
                 continue;
             }
             
-            // TODO: 实际生成逻辑
-            System.out.println("助手: [模型生成的回复...] (功能开发中)");
-            System.out.println();
+            // 添加到对话历史
+            conversationHistory.add("用户: " + input);
+            
+            try {
+                // 构建对话上下文（保留最近5轮对话）
+                StringBuilder context = new StringBuilder();
+                int startIdx = Math.max(0, conversationHistory.size() - 10);
+                for (int i = startIdx; i < conversationHistory.size(); i++) {
+                    context.append(conversationHistory.get(i)).append("\n");
+                }
+                context.append("助手: ");
+                
+                // 编码输入
+                List<Integer> promptIds = tokenizer.encode(context.toString(), false, false);
+                int[] promptArray = promptIds.stream().mapToInt(i -> i).toArray();
+                
+                // 生成回复（使用低温度保证连贯性）
+                int[] generated = model.generate(
+                    promptArray,
+                    50,          // maxNewTokens
+                    0.7f,        // temperature
+                    40,          // topK
+                    0.9f         // topP
+                );
+                
+                // 解码回复
+                List<Integer> genIds = new ArrayList<>();
+                for (int id : generated) {
+                    genIds.add(id);
+                }
+                String fullResponse = tokenizer.decode(genIds, true);
+                
+                // 提取助手回复部分（移除上下文）
+                String response = fullResponse;
+                if (fullResponse.contains("助手: ")) {
+                    int assistantIdx = fullResponse.lastIndexOf("助手: ");
+                    response = fullResponse.substring(assistantIdx + 4).trim();
+                }
+                
+                // 输出回复
+                System.out.println("助手: " + response);
+                System.out.println();
+                
+                // 添加到对话历史
+                conversationHistory.add("助手: " + response);
+                
+            } catch (Exception e) {
+                System.err.println("生成回复失败: " + e.getMessage());
+                System.out.println("助手: [模型生成失败,请重试]\n");
+            }
         }
         
         scanner.close();

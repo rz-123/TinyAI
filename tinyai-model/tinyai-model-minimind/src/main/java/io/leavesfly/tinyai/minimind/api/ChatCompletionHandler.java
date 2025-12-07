@@ -2,6 +2,9 @@ package io.leavesfly.tinyai.minimind.api;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import io.leavesfly.tinyai.minimind.model.MiniMindConfig;
+import io.leavesfly.tinyai.minimind.model.MiniMindModel;
+import io.leavesfly.tinyai.minimind.tokenizer.MiniMindTokenizer;
 
 import java.io.IOException;
 import java.util.*;
@@ -32,6 +35,25 @@ import java.util.*;
  * @since 2024
  */
 public class ChatCompletionHandler implements HttpHandler {
+    
+    // 共享的模型实例
+    private static MiniMindModel sharedModel;
+    private static MiniMindTokenizer sharedTokenizer;
+    
+    static {
+        // 初始化共享模型
+        try {
+            MiniMindConfig config = MiniMindConfig.createSmallConfig();
+            sharedModel = new MiniMindModel("minimind-chat-api", config);
+            sharedTokenizer = MiniMindTokenizer.createCharLevelTokenizer(
+                config.getVocabSize(), config.getMaxSeqLen()
+            );
+            sharedModel.setTraining(false);
+            System.out.println("Chat API模型初始化完成");
+        } catch (Exception e) {
+            System.err.println("Chat模型初始化失败: " + e.getMessage());
+        }
+    }
     
     @Override
     public void handle(HttpExchange exchange) throws IOException {
@@ -111,21 +133,73 @@ public class ChatCompletionHandler implements HttpHandler {
     }
     
     /**
-     * 生成对话回复(占位实现)
-     * 
-     * TODO: 集成实际的MiniMind模型
+     * 生成对话回复（集成实际的MiniMind模型）
      */
     private String generateChatReply(List<ChatMessage> messages, int maxTokens, 
                                     double temperature, double topP) {
-        // 占位实现:返回示例回复
-        StringBuilder context = new StringBuilder();
-        for (ChatMessage msg : messages) {
-            context.append(msg.role).append(": ").append(msg.content).append("\n");
+        try {
+            if (sharedModel == null || sharedTokenizer == null) {
+                return "[Error: Model not initialized]";
+            }
+            
+            // 1. 构建对话上下文
+            StringBuilder context = new StringBuilder();
+            
+            // 保留最近10轮对话
+            int startIdx = Math.max(0, messages.size() - 10);
+            for (int i = startIdx; i < messages.size(); i++) {
+                ChatMessage msg = messages.get(i);
+                if ("system".equals(msg.role)) {
+                    context.append("系统: ").append(msg.content).append("\n");
+                } else if ("user".equals(msg.role)) {
+                    context.append("用户: ").append(msg.content).append("\n");
+                } else if ("assistant".equals(msg.role)) {
+                    context.append("助手: ").append(msg.content).append("\n");
+                }
+            }
+            context.append("助手: ");
+            
+            // 2. 编码输入
+            List<Integer> promptIds = sharedTokenizer.encode(context.toString(), false, false);
+            int[] promptArray = promptIds.stream().mapToInt(i -> i).toArray();
+            
+            // 3. 调用模型生成
+            int[] generated = sharedModel.generate(
+                promptArray,
+                maxTokens,
+                (float) temperature,
+                0,  // topK
+                (float) topP
+            );
+            
+            // 4. 解码输出
+            List<Integer> genIds = new ArrayList<>();
+            for (int id : generated) {
+                genIds.add(id);
+            }
+            String fullResponse = sharedTokenizer.decode(genIds, true);
+            
+            // 5. 提取助手回复部分
+            String response = fullResponse;
+            if (fullResponse.contains("助手: ")) {
+                int assistantIdx = fullResponse.lastIndexOf("助手: ");
+                response = fullResponse.substring(assistantIdx + 4).trim();
+                
+                // 移除可能的其他角色标签
+                if (response.contains("\n用户: ")) {
+                    response = response.substring(0, response.indexOf("\n用户: ")).trim();
+                }
+                if (response.contains("\n系统: ")) {
+                    response = response.substring(0, response.indexOf("\n系统: ")).trim();
+                }
+            }
+            
+            return response;
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "[Error: " + e.getMessage() + "]";
         }
-        
-        return "[Generated reply based on conversation]\n" +
-               "This is a placeholder response. Please integrate actual MiniMind model.\n" +
-               "Context:\n" + context.toString();
     }
     
     /**
