@@ -220,8 +220,14 @@ public class RLBenchmarkDemo {
         float totalReward = 0.0f;
         int optimalActions = 0;
         int optimalArm = 2; // 已知最优臂
+        int actualSteps = 0;
         
         for (int step = 0; step < steps; step++) {
+            // 检查环境是否已结束，如果结束则提前退出
+            if (environment.isDone()) {
+                break;
+            }
+            
             Variable action = agent.selectAction(environment.getCurrentState());
             Environment.StepResult result = environment.step(action);
             
@@ -233,17 +239,23 @@ public class RLBenchmarkDemo {
             agent.learn(experience);
             
             totalReward += result.getReward();
+            actualSteps++;
             
             int selectedArm = (int) action.getValue().getNumber().floatValue();
             if (selectedArm == optimalArm) {
                 optimalActions++;
             }
+            
+            // 如果这一步后环境结束，也退出循环
+            if (result.isDone()) {
+                break;
+            }
         }
         
         BenchmarkResult result = new BenchmarkResult();
         result.algorithmName = agent.getName();
-        result.avgReward = totalReward / steps;
-        result.optimalRate = (float) optimalActions / steps;
+        result.avgReward = actualSteps > 0 ? totalReward / actualSteps : 0.0f;
+        result.optimalRate = actualSteps > 0 ? (float) optimalActions / actualSteps : 0.0f;
         
         return result;
     }
@@ -256,6 +268,11 @@ public class RLBenchmarkDemo {
         List<Float> recentRewards = new ArrayList<>();
         
         for (int step = 0; step < 1500; step++) {
+            // 检查环境是否已结束，如果结束则提前退出
+            if (environment.isDone()) {
+                break;
+            }
+            
             Variable action = agent.selectAction(environment.getCurrentState());
             Environment.StepResult stepResult = environment.step(action);
             
@@ -282,6 +299,11 @@ public class RLBenchmarkDemo {
                 if (avgReward > 0.68 && result.convergenceStep == -1) { // 85% * 0.8 (最优奖励)
                     result.convergenceStep = step;
                 }
+            }
+            
+            // 如果这一步后环境结束，也退出循环
+            if (stepResult.isDone()) {
+                break;
             }
         }
         
