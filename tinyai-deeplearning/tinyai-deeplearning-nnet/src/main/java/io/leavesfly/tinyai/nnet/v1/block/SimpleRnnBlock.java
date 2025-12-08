@@ -40,7 +40,7 @@ public class SimpleRnnBlock extends Block {
     public SimpleRnnBlock(String name, int inputSize, int hiddenSize, int outputSize) {
         super(name);
 
-        rnnLayer = new SimpleRnnLayer("rnn");
+        rnnLayer = new SimpleRnnLayer("rnn", inputSize, hiddenSize);
 
         addLayer(rnnLayer);
 

@@ -36,9 +36,14 @@ public class MlpSinExam {
 
         //====== 1,生成数据====
         int batchSize = 100;
-        DataSet dataSet = new SinDataSet(batchSize);
+        SinDataSet dataSet = new SinDataSet(batchSize);
         dataSet.prepare();
-        List<Batch> batches = dataSet.getBatches();
+        // SinDataSet 将数据存储在 splitDatasetMap 中，需要获取训练数据集
+        DataSet trainDataSet = dataSet.getTrainDataSet();
+        if (trainDataSet == null) {
+            throw new IllegalStateException("训练数据集未准备，请确保已调用 prepare() 方法");
+        }
+        List<Batch> batches = trainDataSet.getBatches();
 
         Variable variableX = batches.get(0).toVariableX().setName("x").setRequireGrad(false);
         Variable variableY = batches.get(0).toVariableY().setName("y").setRequireGrad(false);

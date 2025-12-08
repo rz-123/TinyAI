@@ -83,6 +83,11 @@ public class SimpleRnnLayer extends RnnLayer {
     private int hiddenSize;
 
     /**
+     * 输入特征维度
+     */
+    private int inputSize;
+
+    /**
      * 当前状态的批大小
      * 用于检测批大小变化并重置状态
      */
@@ -94,6 +99,20 @@ public class SimpleRnnLayer extends RnnLayer {
     }
 
     /**
+     * 构造一个SimpleRnnLayer实例（使用输入和隐藏维度）
+     *
+     * @param name       层名称
+     * @param inputSize  输入特征维度
+     * @param hiddenSize 隐藏状态维度
+     */
+    public SimpleRnnLayer(String name, int inputSize, int hiddenSize) {
+        super(name);
+        this.inputSize = inputSize;
+        this.hiddenSize = hiddenSize;
+        init();
+    }
+
+    /**
      * 构造一个SimpleRnnLayer实例
      *
      * @param name         层名称
@@ -102,6 +121,7 @@ public class SimpleRnnLayer extends RnnLayer {
      */
     public SimpleRnnLayer(String name, Shape xInputShape, Shape yOutputShape) {
         super(name, xInputShape, yOutputShape);
+        this.inputSize = xInputShape.getColumn();
         this.hiddenSize = yOutputShape.getColumn();
         init();
     }
@@ -123,7 +143,21 @@ public class SimpleRnnLayer extends RnnLayer {
      */
     @Override
     public void init() {
-        int inputSize = inputShape.getColumn();
+        // 如果 inputSize 未设置，尝试从 inputShape 获取
+        if (inputSize == 0 && inputShape != null) {
+            inputSize = inputShape.getColumn();
+        }
+        
+        // 如果 hiddenSize 未设置，尝试从 outputShape 获取
+        if (hiddenSize == 0 && outputShape != null) {
+            hiddenSize = outputShape.getColumn();
+        }
+        
+        // 如果仍然无法确定维度，抛出异常
+        if (inputSize == 0 || hiddenSize == 0) {
+            throw new IllegalStateException(
+                "SimpleRnnLayer 初始化失败：inputSize 和 hiddenSize 必须通过构造函数参数或 inputShape/outputShape 提供");
+        }
 
         // 初始化输入到隐藏状态的权重矩阵，使用Xavier初始化
         NdArray initWeight = NdArray.likeRandomN(Shape.of(inputSize, hiddenSize))
