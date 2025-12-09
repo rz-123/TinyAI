@@ -3,10 +3,12 @@ package io.leavesfly.tinyai.ndarr.cpu.aggregations;
 import io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu;
 import io.leavesfly.tinyai.ndarr.cpu.ShapeCpu;
 import io.leavesfly.tinyai.ndarr.cpu.utils.ArrayValidator;
+import io.leavesfly.tinyai.ndarr.cpu.utils.IndexConverter;
 
 /**
  * 聚合操作类
  * <p>提供各种聚合运算功能，包括求和、均值、方差、最大值、最小值等</p>
+ * <p>经过性能优化，直接访问底层buffer，避免不必要的索引转换和方法调用开销</p>
  */
 public class ReductionOperations {
 
@@ -18,71 +20,11 @@ public class ReductionOperations {
      */
     public static NdArrayCpu sum(NdArrayCpu array) {
         float sum = 0f;
-        for (float value : array.buffer) {
-            sum += value;
+        float[] buffer = array.buffer;
+        for (int i = 0; i < buffer.length; i++) {
+            sum += buffer[i];
         }
         return new NdArrayCpu(sum);
-    }
-
-    /**
-     * 按轴聚合的通用方法，沿指定轴进行聚合运算
-     *
-     * @param array        数组
-     * @param axis         聚合轴
-     * @param operation    聚合操作函数
-     * @param operationName 操作名称，用于错误提示
-     * @return 聚合结果数组
-     * @throws IllegalArgumentException 当轴参数无效时抛出
-     */
-    private static NdArrayCpu axisOperation(NdArrayCpu array, int axis, java.util.function.Function<float[], Float> operation, String operationName) {
-        ArrayValidator.validateAxis(axis, array.shape.getDimNum());
-
-        // 计算新形状
-        int[] newDimensions = new int[array.shape.getDimNum() - 1];
-        int newIndex = 0;
-        for (int i = 0; i < array.shape.getDimNum(); i++) {
-            if (i != axis) {
-                newDimensions[newIndex++] = array.shape.getDimension(i);
-            }
-        }
-
-        ShapeCpu newShape = ShapeCpu.of(newDimensions);
-        NdArrayCpu result = new NdArrayCpu(newShape);
-
-        // 计算聚合
-        int totalElementsInAxis = array.shape.getDimension(axis);
-
-        // 遍历所有非axis维度的组合
-        int[] indices = new int[array.shape.getDimNum()];
-        int[] resultIndices = new int[newShape.getDimNum()];
-
-        for (int i = 0; i < newShape.size(); i++) {
-            // 将结果索引转换为多维索引
-            int temp = i;
-            for (int dim = newShape.getDimNum() - 1; dim >= 0; dim--) {
-                resultIndices[dim] = temp % newShape.getDimension(dim);
-                temp /= newShape.getDimension(dim);
-            }
-
-            // 构建完整的索引数组
-            int resultIndex = 0;
-            for (int dim = 0; dim < array.shape.getDimNum(); dim++) {
-                if (dim == axis) {
-                    indices[dim] = 0; // axis维度将在下面循环中变化
-                } else {
-                    indices[dim] = resultIndices[resultIndex++];
-                }
-            }
-
-            // 计算沿axis维度的聚合
-            float[] dataToAggregate = new float[totalElementsInAxis];
-            for (int j = 0; j < totalElementsInAxis; j++) {
-                indices[axis] = j;
-                dataToAggregate[j] = array.get(indices);
-            }
-            result.buffer[i] = operation.apply(dataToAggregate);
-        }
-        return result;
     }
 
     /**
@@ -93,13 +35,7 @@ public class ReductionOperations {
      * @return 均值运算结果数组
      */
     public static NdArrayCpu mean(NdArrayCpu array, int axis) {
-        return axisOperation(array, axis, values -> {
-            float sum = 0f;
-            for (float value : values) {
-                sum += value;
-            }
-            return sum / values.length;
-        }, "均值计算");
+        return axisSum(array, axis, true);
     }
 
     /**
@@ -110,21 +46,43 @@ public class ReductionOperations {
      * @return 方差运算结果数组
      */
     public static NdArrayCpu var(NdArrayCpu array, int axis) {
-        return axisOperation(array, axis, values -> {
-            // 计算均值
-            float mean = 0f;
-            for (float value : values) {
-                mean += value;
+        ArrayValidator.validateAxis(axis, array.shape.getDimNum());
+        
+        ShapeCpu newShape = computeReducedShape(array.shape, axis);
+        NdArrayCpu result = new NdArrayCpu(newShape);
+        
+        int axisSize = array.shape.getDimension(axis);
+        int[] indices = new int[array.shape.getDimNum()];
+        int[] resultIndices = new int[newShape.getDimNum()];
+        
+        float[] buffer = array.buffer;
+        ShapeCpu shape = array.shape;
+        
+        for (int i = 0; i < newShape.size(); i++) {
+            // 将结果索引转换为多维索引
+            IndexConverter.flatToMultiIndex(i, resultIndices, newShape);
+            
+            // 构建完整的索引数组（排除axis维度）
+            buildIndicesExcludingAxis(indices, resultIndices, axis, shape.getDimNum());
+            
+            // 计算均值和方差（单次遍历）
+            float sum = 0f;
+            for (int j = 0; j < axisSize; j++) {
+                indices[axis] = j;
+                sum += buffer[shape.getIndex(indices)];
             }
-            mean /= values.length;
-
+            float mean = sum / axisSize;
+            
             // 计算方差
             float variance = 0f;
-            for (float value : values) {
-                variance += (value - mean) * (value - mean);
+            for (int j = 0; j < axisSize; j++) {
+                indices[axis] = j;
+                float diff = buffer[shape.getIndex(indices)] - mean;
+                variance += diff * diff;
             }
-            return variance / values.length;
-        }, "方差计算");
+            result.buffer[i] = variance / axisSize;
+        }
+        return result;
     }
 
     /**
@@ -135,13 +93,7 @@ public class ReductionOperations {
      * @return 累和运算结果数组
      */
     public static NdArrayCpu sum(NdArrayCpu array, int axis) {
-        return axisOperation(array, axis, values -> {
-            float sum = 0f;
-            for (float value : values) {
-                sum += value;
-            }
-            return sum;
-        }, "累和计算");
+        return axisSum(array, axis, false);
     }
 
     /**
@@ -153,15 +105,7 @@ public class ReductionOperations {
      * @throws IllegalArgumentException 当轴参数无效时抛出
      */
     public static NdArrayCpu max(NdArrayCpu array, int axis) {
-        return axisOperation(array, axis, values -> {
-            float max = Float.NEGATIVE_INFINITY;
-            for (float value : values) {
-                if (value > max) {
-                    max = value;
-                }
-            }
-            return max;
-        }, "最大值计算");
+        return axisMinMax(array, axis, true);
     }
 
     /**
@@ -173,15 +117,7 @@ public class ReductionOperations {
      * @throws IllegalArgumentException 当轴参数无效时抛出
      */
     public static NdArrayCpu min(NdArrayCpu array, int axis) {
-        return axisOperation(array, axis, values -> {
-            float min = Float.MAX_VALUE;
-            for (float value : values) {
-                if (value < min) {
-                    min = value;
-                }
-            }
-            return min;
-        }, "最小值计算");
+        return axisMinMax(array, axis, false);
     }
 
     /**
@@ -192,12 +128,138 @@ public class ReductionOperations {
      */
     public static float max(NdArrayCpu array) {
         float max = Float.NEGATIVE_INFINITY;
-        for (float value : array.buffer) {
-            if (max < value) {
-                max = value;
+        float[] buffer = array.buffer;
+        for (int i = 0; i < buffer.length; i++) {
+            if (buffer[i] > max) {
+                max = buffer[i];
             }
         }
         return max;
+    }
+
+    // =============================================================================
+    // 私有辅助方法
+    // =============================================================================
+
+    /**
+     * 计算沿轴求和或均值（优化版本，避免创建中间数组）
+     *
+     * @param array   数组
+     * @param axis    聚合轴
+     * @param computeMean 是否计算均值（true）还是求和（false）
+     * @return 聚合结果数组
+     */
+    private static NdArrayCpu axisSum(NdArrayCpu array, int axis, boolean computeMean) {
+        ArrayValidator.validateAxis(axis, array.shape.getDimNum());
+        
+        ShapeCpu newShape = computeReducedShape(array.shape, axis);
+        NdArrayCpu result = new NdArrayCpu(newShape);
+        
+        int axisSize = array.shape.getDimension(axis);
+        int[] indices = new int[array.shape.getDimNum()];
+        int[] resultIndices = new int[newShape.getDimNum()];
+        
+        float[] buffer = array.buffer;
+        ShapeCpu shape = array.shape;
+        
+        for (int i = 0; i < newShape.size(); i++) {
+            // 将结果索引转换为多维索引
+            IndexConverter.flatToMultiIndex(i, resultIndices, newShape);
+            
+            // 构建完整的索引数组（排除axis维度）
+            buildIndicesExcludingAxis(indices, resultIndices, axis, shape.getDimNum());
+            
+            // 计算沿axis维度的累和
+            float sum = 0f;
+            for (int j = 0; j < axisSize; j++) {
+                indices[axis] = j;
+                sum += buffer[shape.getIndex(indices)];
+            }
+            result.buffer[i] = computeMean ? sum / axisSize : sum;
+        }
+        return result;
+    }
+
+    /**
+     * 计算沿轴的最大值或最小值（优化版本）
+     *
+     * @param array   数组
+     * @param axis    聚合轴
+     * @param findMax true表示查找最大值，false表示查找最小值
+     * @return 聚合结果数组
+     */
+    private static NdArrayCpu axisMinMax(NdArrayCpu array, int axis, boolean findMax) {
+        ArrayValidator.validateAxis(axis, array.shape.getDimNum());
+        
+        ShapeCpu newShape = computeReducedShape(array.shape, axis);
+        NdArrayCpu result = new NdArrayCpu(newShape);
+        
+        int axisSize = array.shape.getDimension(axis);
+        int[] indices = new int[array.shape.getDimNum()];
+        int[] resultIndices = new int[newShape.getDimNum()];
+        
+        float[] buffer = array.buffer;
+        ShapeCpu shape = array.shape;
+        
+        float initialValue = findMax ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
+        
+        for (int i = 0; i < newShape.size(); i++) {
+            // 将结果索引转换为多维索引
+            IndexConverter.flatToMultiIndex(i, resultIndices, newShape);
+            
+            // 构建完整的索引数组（排除axis维度）
+            buildIndicesExcludingAxis(indices, resultIndices, axis, shape.getDimNum());
+            
+            // 查找沿axis维度的最值
+            float extremum = initialValue;
+            for (int j = 0; j < axisSize; j++) {
+                indices[axis] = j;
+                float value = buffer[shape.getIndex(indices)];
+                if ((findMax && value > extremum) || (!findMax && value < extremum)) {
+                    extremum = value;
+                }
+            }
+            result.buffer[i] = extremum;
+        }
+        return result;
+    }
+
+    /**
+     * 计算去除指定轴后的新形状
+     *
+     * @param shape 原始形状
+     * @param axis  要移除的轴
+     * @return 新的形状
+     */
+    private static ShapeCpu computeReducedShape(ShapeCpu shape, int axis) {
+        int dimNum = shape.getDimNum();
+        int[] newDimensions = new int[dimNum - 1];
+        int newIndex = 0;
+        for (int i = 0; i < dimNum; i++) {
+            if (i != axis) {
+                newDimensions[newIndex++] = shape.getDimension(i);
+            }
+        }
+        return ShapeCpu.of(newDimensions);
+    }
+
+    /**
+     * 构建完整的索引数组，将结果索引映射到原始数组索引（排除axis维度）
+     *
+     * @param indices       输出的完整索引数组
+     * @param resultIndices 结果数组的多维索引
+     * @param axis          要排除的轴
+     * @param totalDims     总维度数
+     */
+    private static void buildIndicesExcludingAxis(int[] indices, int[] resultIndices, int axis, int totalDims) {
+        int resultIndex = 0;
+        for (int dim = 0; dim < totalDims; dim++) {
+            if (dim == axis) {
+                indices[dim] = 0; // axis维度将在后续循环中变化
+            } else {
+                indices[dim] = resultIndices[resultIndex++];
+            }
+        }
     }
 }
 

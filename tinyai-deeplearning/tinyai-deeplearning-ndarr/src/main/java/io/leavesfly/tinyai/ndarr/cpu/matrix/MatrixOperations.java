@@ -7,6 +7,7 @@ import io.leavesfly.tinyai.ndarr.cpu.ShapeCpu;
 /**
  * 矩阵运算操作类
  * <p>提供矩阵乘法、切片等矩阵相关操作</p>
+ * <p>经过性能优化，使用缓存友好的循环顺序和预计算优化</p>
  */
 public class MatrixOperations {
 
@@ -14,6 +15,7 @@ public class MatrixOperations {
      * 矩阵内积运算（矩阵乘法）
      *
      * <p>执行标准的矩阵乘法运算，要求第一个矩阵的列数等于第二个矩阵的行数</p>
+     * <p>支持多维数组的批量矩阵乘法，自动处理广播机制</p>
      *
      * @param left  左操作数数组
      * @param right 右操作数数组
@@ -21,66 +23,161 @@ public class MatrixOperations {
      * @throws IllegalArgumentException 当数组不是矩阵或维度不匹配时抛出
      */
     public static NdArrayCpu dot(NdArrayCpu left, NdArrayCpu right) {
-        // 对于多维数组，我们只支持最后两个维度的矩阵乘法
-        if (left.shape.getDimNum() >= 2 && right.shape.getDimNum() >= 2) {
-            int leftLastDim = left.shape.getDimension(left.shape.getDimNum() - 1);
-            int leftSecondLastDim = left.shape.getDimension(left.shape.getDimNum() - 2);
-            int rightLastDim = right.shape.getDimension(right.shape.getDimNum() - 1);
-            int rightSecondLastDim = right.shape.getDimension(right.shape.getDimNum() - 2);
+        // 提前验证维度要求
+        if (left.shape.getDimNum() < 2 || right.shape.getDimNum() < 2) {
+            throw new IllegalArgumentException("矩阵乘法操作需要至少二维数组");
+        }
 
-            if (leftLastDim != rightSecondLastDim) {
-                throw new IllegalArgumentException(String.format("矩阵乘法维度不匹配：%s × %s，第一个矩阵的列数(%d)必须等于第二个矩阵的行数(%d)", left.shape, right.shape, leftLastDim, rightSecondLastDim));
+        // 缓存维度信息，避免重复调用
+        int leftDimNum = left.shape.getDimNum();
+        int rightDimNum = right.shape.getDimNum();
+        int leftCols = left.shape.getDimension(leftDimNum - 1);  // 左矩阵列数（K）
+        int leftRows = left.shape.getDimension(leftDimNum - 2);   // 左矩阵行数（M）
+        int rightCols = right.shape.getDimension(rightDimNum - 1); // 右矩阵列数（N）
+        int rightRows = right.shape.getDimension(rightDimNum - 2); // 右矩阵行数（K）
+
+        // 验证矩阵乘法维度匹配：左矩阵列数 = 右矩阵行数
+        if (leftCols != rightRows) {
+            throw new IllegalArgumentException(
+                    String.format("矩阵乘法维度不匹配：%s × %s，第一个矩阵的列数(%d)必须等于第二个矩阵的行数(%d)",
+                            left.shape, right.shape, leftCols, rightRows));
+        }
+
+        // 特化处理：2D矩阵乘法（最常见情况，性能最优）
+        if (leftDimNum == 2 && rightDimNum == 2) {
+            return dot2D(left, right, leftRows, leftCols, rightCols);
+        }
+
+        // 通用多维矩阵乘法
+        return dotMultiDim(left, right, leftDimNum, rightDimNum, leftRows, leftCols, rightRows, rightCols);
+    }
+
+    /**
+     * 2D矩阵乘法特化实现（性能优化版本）
+     * <p>使用缓存友好的循环顺序：i-k-j，提高缓存命中率</p>
+     *
+     * @param left     左矩阵
+     * @param right    右矩阵
+     * @param leftRows 左矩阵行数（M）
+     * @param leftCols 左矩阵列数（K）
+     * @param rightCols 右矩阵列数（N）
+     * @return 矩阵乘法结果 (M × N)
+     */
+    private static NdArrayCpu dot2D(NdArrayCpu left, NdArrayCpu right, int leftRows, int leftCols, int rightCols) {
+        NdArrayCpu result = new NdArrayCpu(ShapeCpu.of(leftRows, rightCols));
+        float[] leftBuf = left.buffer;
+        float[] rightBuf = right.buffer;
+        float[] resultBuf = result.buffer;
+
+        // 优化循环顺序：i-k-j 提高缓存友好性
+        // 外层循环：遍历左矩阵的行
+        for (int i = 0; i < leftRows; i++) {
+            int leftRowOffset = i * leftCols;  // 预计算左矩阵行偏移
+            int resultRowOffset = i * rightCols; // 预计算结果矩阵行偏移
+
+            // 中层循环：遍历公共维度K
+            for (int k = 0; k < leftCols; k++) {
+                float leftVal = leftBuf[leftRowOffset + k]; // 左矩阵元素 A[i][k]
+                int rightRowOffset = k * rightCols; // 预计算右矩阵行偏移
+
+                // 内层循环：遍历右矩阵的列（连续访问，缓存友好）
+                for (int j = 0; j < rightCols; j++) {
+                    // C[i][j] += A[i][k] * B[k][j]
+                    resultBuf[resultRowOffset + j] += leftVal * rightBuf[rightRowOffset + j];
+                }
             }
+        }
 
-            // 计算结果形状
-            int[] newDims = new int[Math.max(left.shape.getDimNum(), right.shape.getDimNum())];
-            int maxDimNum = Math.max(left.shape.getDimNum(), right.shape.getDimNum());
+        return result;
+    }
 
-            // 复制前面的维度
-            for (int i = 0; i < maxDimNum - 2; i++) {
-                int leftDim = (i < left.shape.getDimNum() - 2) ? left.shape.getDimension(i) : 1;
-                int rightDim = (i < right.shape.getDimNum() - 2) ? right.shape.getDimension(i) : 1;
-                newDims[i] = Math.max(leftDim, rightDim);
-            }
+    /**
+     * 多维数组矩阵乘法实现（支持批量矩阵乘法和广播）
+     *
+     * @param left      左操作数数组
+     * @param right     右操作数数组
+     * @param leftDimNum 左数组维度数
+     * @param rightDimNum 右数组维度数
+     * @param leftRows  左矩阵行数（M）
+     * @param leftCols  左矩阵列数（K）
+     * @param rightRows 右矩阵行数（K）
+     * @param rightCols 右矩阵列数（N）
+     * @return 矩阵乘法结果
+     */
+    private static NdArrayCpu dotMultiDim(NdArrayCpu left, NdArrayCpu right,
+                                          int leftDimNum, int rightDimNum,
+                                          int leftRows, int leftCols, int rightRows, int rightCols) {
+        // 计算结果形状
+        int maxDimNum = Math.max(leftDimNum, rightDimNum);
+        int[] newDims = new int[maxDimNum];
 
-            // 设置最后两个维度
-            newDims[maxDimNum - 2] = leftSecondLastDim;
-            newDims[maxDimNum - 1] = rightLastDim;
+        // 计算前置维度（广播维度）
+        for (int i = 0; i < maxDimNum - 2; i++) {
+            int leftDim = (i < leftDimNum - 2) ? left.shape.getDimension(i) : 1;
+            int rightDim = (i < rightDimNum - 2) ? right.shape.getDimension(i) : 1;
+            newDims[i] = Math.max(leftDim, rightDim);
+        }
 
-            NdArrayCpu result = new NdArrayCpu(ShapeCpu.of(newDims));
+        // 设置最后两个维度：结果矩阵形状为 (..., M, N)
+        newDims[maxDimNum - 2] = leftRows;
+        newDims[maxDimNum - 1] = rightCols;
 
-            // 实现多维数组的矩阵乘法逻辑
-            int batchSize = result.shape.size() / (leftSecondLastDim * rightLastDim);
+        NdArrayCpu result = new NdArrayCpu(ShapeCpu.of(newDims));
 
-            // 支持对前置维度的广播
-            int leftBatchSize = left.shape.size() / (leftSecondLastDim * leftLastDim);
-            int rightBatchSize = right.shape.size() / (rightSecondLastDim * rightLastDim);
+        // 预计算批量大小和步长，避免循环内重复计算
+        int matrixSize = leftRows * rightCols;  // 单个矩阵的元素数
+        int batchSize = result.shape.size() / matrixSize;
 
-            for (int batch = 0; batch < batchSize; batch++) {
-                int leftBatchIndex = (leftBatchSize == 1) ? 0 : batch % leftBatchSize;
-                int rightBatchIndex = (rightBatchSize == 1) ? 0 : batch % rightBatchSize;
+        int leftMatrixSize = leftRows * leftCols;   // 左矩阵单个批次的元素数
+        int rightMatrixSize = rightRows * rightCols; // 右矩阵单个批次的元素数
 
-                for (int i = 0; i < leftSecondLastDim; i++) {
-                    for (int j = 0; j < rightLastDim; j++) {
-                        float sum = 0f;
-                        for (int k = 0; k < leftLastDim; k++) {
-                            int leftIndex = leftBatchIndex * (leftSecondLastDim * leftLastDim) + i * leftLastDim + k;
-                            int rightIndex = rightBatchIndex * (rightSecondLastDim * rightLastDim) + k * rightLastDim + j;
-                            sum += left.buffer[leftIndex] * right.buffer[rightIndex];
-                        }
-                        int resultIndex = batch * (leftSecondLastDim * rightLastDim) + i * rightLastDim + j;
-                        result.buffer[resultIndex] = sum;
+        int leftBatchSize = left.shape.size() / leftMatrixSize;
+        int rightBatchSize = right.shape.size() / rightMatrixSize;
+
+        // 预计算步长，用于索引计算
+        int leftBatchStride = leftMatrixSize;
+        int rightBatchStride = rightMatrixSize;
+        int resultBatchStride = matrixSize;
+
+        float[] leftBuf = left.buffer;
+        float[] rightBuf = right.buffer;
+        float[] resultBuf = result.buffer;
+
+        // 批量矩阵乘法
+        for (int batch = 0; batch < batchSize; batch++) {
+            // 计算当前批次的索引（支持广播）
+            int leftBatchIdx = (leftBatchSize == 1) ? 0 : batch % leftBatchSize;
+            int rightBatchIdx = (rightBatchSize == 1) ? 0 : batch % rightBatchSize;
+
+            // 预计算批次偏移量
+            int leftBatchOffset = leftBatchIdx * leftBatchStride;
+            int rightBatchOffset = rightBatchIdx * rightBatchStride;
+            int resultBatchOffset = batch * resultBatchStride;
+
+            // 使用缓存友好的循环顺序进行矩阵乘法
+            for (int i = 0; i < leftRows; i++) {
+                int leftRowOffset = leftBatchOffset + i * leftCols;
+                int resultRowOffset = resultBatchOffset + i * rightCols;
+
+                for (int k = 0; k < leftCols; k++) {
+                    float leftVal = leftBuf[leftRowOffset + k];
+                    int rightRowOffset = rightBatchOffset + k * rightCols;
+
+                    for (int j = 0; j < rightCols; j++) {
+                        resultBuf[resultRowOffset + j] += leftVal * rightBuf[rightRowOffset + j];
                     }
                 }
             }
-            return result;
         }
 
-        throw new IllegalArgumentException("操作需要至少二维数组");
+        return result;
     }
 
     /**
      * 获取数组的子集（切片操作）
+     *
+     * <p>支持对矩阵的最后两个维度进行切片操作</p>
+     * <p>优化：预计算索引映射，使用批量复制优化连续数据访问</p>
      *
      * @param array      数组
      * @param rowSlices  行索引数组，null表示选择所有行
@@ -89,46 +186,154 @@ public class MatrixOperations {
      * @throws IllegalArgumentException 当数组不是矩阵或参数不合法时抛出
      */
     public static NdArrayCpu getItem(NdArrayCpu array, int[] rowSlices, int[] colSlices) {
-        // 对于多维数组，我们只支持最后两个维度的切片操作
-        if (array.shape.getDimNum() >= 2) {
-            int lastDimSize = array.shape.getDimension(array.shape.getDimNum() - 1);
-            int secondLastDimSize = array.shape.getDimension(array.shape.getDimNum() - 2);
-
-            if (rowSlices != null && colSlices != null) {
-                if (rowSlices.length != colSlices.length) {
-                    throw new IllegalArgumentException(String.format("行索引数组长度(%d)必须等于列索引数组长度(%d)", rowSlices.length, colSlices.length));
-                }
-
-                NdArrayCpu result = new NdArrayCpu(ShapeCpu.of(1, colSlices.length));
-                for (int i = 0; i < colSlices.length; i++) {
-                    int index = rowSlices[i] * lastDimSize + colSlices[i];
-                    result.buffer[i] = array.buffer[index];
-                }
-                return result;
-            }
-
-            if (colSlices == null) {
-                colSlices = NdArrayUtil.getSeq(lastDimSize);
-            }
-            if (rowSlices == null) {
-                rowSlices = NdArrayUtil.getSeq(secondLastDimSize);
-            }
-
-            NdArrayCpu result = new NdArrayCpu(ShapeCpu.of(rowSlices.length, colSlices.length));
-            for (int i = 0; i < rowSlices.length; i++) {
-                for (int j = 0; j < colSlices.length; j++) {
-                    int index = rowSlices[i] * lastDimSize + colSlices[j];
-                    result.buffer[i * result.getShape().getColumn() + j] = array.buffer[index];
-                }
-            }
-            return result;
+        // 提前验证维度要求
+        if (array.shape.getDimNum() < 2) {
+            throw new IllegalArgumentException("切片操作需要至少二维数组");
         }
 
-        throw new IllegalArgumentException("操作需要至少二维数组");
+        // 缓存维度信息
+        int dimNum = array.shape.getDimNum();
+        int cols = array.shape.getDimension(dimNum - 1);  // 列数
+        int rows = array.shape.getDimension(dimNum - 2);  // 行数
+
+        // 处理点索引模式：rowSlices和colSlices都不为null，且长度相等
+        if (rowSlices != null && colSlices != null) {
+            validateSliceIndices(rowSlices, colSlices, rows, cols);
+            return getItemPointIndices(array, rowSlices, colSlices, cols);
+        }
+
+        // 处理矩形切片模式：至少有一个为null，或长度不等
+        return getItemRectangularSlice(array, rowSlices, colSlices, rows, cols);
+    }
+
+    /**
+     * 点索引模式：获取指定坐标点的值
+     * <p>rowSlices[i] 和 colSlices[i] 组成一个坐标点</p>
+     *
+     * @param array      源数组
+     * @param rowSlices  行索引数组
+     * @param colSlices  列索引数组
+     * @param cols       源数组列数
+     * @return 结果数组（形状为 1 × N，N为索引数组长度）
+     */
+    private static NdArrayCpu getItemPointIndices(NdArrayCpu array, int[] rowSlices, int[] colSlices, int cols) {
+        int count = colSlices.length;
+        NdArrayCpu result = new NdArrayCpu(ShapeCpu.of(1, count));
+        float[] srcBuf = array.buffer;
+        float[] dstBuf = result.buffer;
+
+        // 预计算索引，避免循环内重复计算
+        for (int i = 0; i < count; i++) {
+            int index = rowSlices[i] * cols + colSlices[i];
+            dstBuf[i] = srcBuf[index];
+        }
+
+        return result;
+    }
+
+    /**
+     * 矩形切片模式：获取矩形区域的子矩阵
+     * <p>支持行切片和列切片的组合</p>
+     *
+     * @param array      源数组
+     * @param rowSlices  行索引数组，null表示选择所有行
+     * @param colSlices  列索引数组，null表示选择所有列
+     * @param rows       源数组行数
+     * @param cols       源数组列数
+     * @return 切片结果数组
+     */
+    private static NdArrayCpu getItemRectangularSlice(NdArrayCpu array, int[] rowSlices, int[] colSlices,
+                                                      int rows, int cols) {
+        // 处理null切片：生成完整的索引序列
+        if (colSlices == null) {
+            colSlices = NdArrayUtil.getSeq(cols);
+        }
+        if (rowSlices == null) {
+            rowSlices = NdArrayUtil.getSeq(rows);
+        }
+
+        // 验证索引范围
+        validateSliceRange(rowSlices, rows, "行");
+        validateSliceRange(colSlices, cols, "列");
+
+        int resultRows = rowSlices.length;
+        int resultCols = colSlices.length;
+        NdArrayCpu result = new NdArrayCpu(ShapeCpu.of(resultRows, resultCols));
+
+        float[] srcBuf = array.buffer;
+        float[] dstBuf = result.buffer;
+
+        // 优化：对于连续的行切片，可以使用System.arraycopy批量复制
+        if (isConsecutive(rowSlices) && isConsecutive(colSlices) && colSlices.length == cols) {
+            // 连续行且完整列：可以使用批量复制
+            int startRow = rowSlices[0];
+            int rowCount = resultRows;
+            int srcOffset = startRow * cols;
+            int dstOffset = 0;
+            System.arraycopy(srcBuf, srcOffset, dstBuf, dstOffset, rowCount * cols);
+        } else {
+            // 非连续切片：逐个元素复制
+            for (int i = 0; i < resultRows; i++) {
+                int srcRowOffset = rowSlices[i] * cols;
+                int dstRowOffset = i * resultCols;
+
+                for (int j = 0; j < resultCols; j++) {
+                    dstBuf[dstRowOffset + j] = srcBuf[srcRowOffset + colSlices[j]];
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * 验证切片索引的有效性（点索引模式）
+     */
+    private static void validateSliceIndices(int[] rowSlices, int[] colSlices, int maxRows, int maxCols) {
+        if (rowSlices.length != colSlices.length) {
+            throw new IllegalArgumentException(
+                    String.format("点索引模式：行索引数组长度(%d)必须等于列索引数组长度(%d)",
+                            rowSlices.length, colSlices.length));
+        }
+
+        // 验证索引范围
+        validateSliceRange(rowSlices, maxRows, "行");
+        validateSliceRange(colSlices, maxCols, "列");
+    }
+
+    /**
+     * 验证切片索引范围
+     */
+    private static void validateSliceRange(int[] indices, int maxValue, String dimension) {
+        for (int i = 0; i < indices.length; i++) {
+            if (indices[i] < 0 || indices[i] >= maxValue) {
+                throw new IllegalArgumentException(
+                        String.format("%s索引超出范围：索引[%d]=%d，有效范围[0, %d)",
+                                dimension, i, indices[i], maxValue - 1));
+            }
+        }
+    }
+
+    /**
+     * 检查索引数组是否连续（用于优化批量复制）
+     */
+    private static boolean isConsecutive(int[] indices) {
+        if (indices.length <= 1) {
+            return true;
+        }
+        for (int i = 1; i < indices.length; i++) {
+            if (indices[i] != indices[i - 1] + 1) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
      * 设置数组的子集（切片赋值操作）
+     *
+     * <p>支持点索引模式和矩形切片模式的赋值操作</p>
+     * <p>优化：预计算索引，使用批量复制优化连续数据写入</p>
      *
      * @param array      数组
      * @param rowSlices  行索引数组，null表示选择所有行
@@ -138,24 +343,86 @@ public class MatrixOperations {
      * @throws IllegalArgumentException 当数组不是矩阵或参数不合法时抛出
      */
     public static NdArrayCpu setItem(NdArrayCpu array, int[] rowSlices, int[] colSlices, float[] data) {
-        // 对于多维数组，我们只支持最后两个维度的切片操作
-        if (array.shape.getDimNum() >= 2) {
-            int lastDimSize = array.shape.getDimension(array.shape.getDimNum() - 1);
-
-            if (rowSlices != null && colSlices != null) {
-                if (rowSlices.length != colSlices.length) {
-                    throw new IllegalArgumentException(String.format("行索引数组长度(%d)必须等于列索引数组长度(%d)", rowSlices.length, colSlices.length));
-                }
-
-                for (int i = 0; i < colSlices.length; i++) {
-                    int index = rowSlices[i] * lastDimSize + colSlices[i];
-                    array.buffer[index] = data[i];
-                }
-                return array;
-            }
+        // 提前验证维度要求
+        if (array.shape.getDimNum() < 2) {
+            throw new IllegalArgumentException("切片赋值操作需要至少二维数组");
         }
 
-        throw new IllegalArgumentException("操作需要至少二维数组");
+        // 缓存维度信息
+        int dimNum = array.shape.getDimNum();
+        int cols = array.shape.getDimension(dimNum - 1);  // 列数
+        int rows = array.shape.getDimension(dimNum - 2);  // 行数
+
+        // 验证数据长度
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException("数据数组不能为空");
+        }
+
+        // 处理点索引模式：rowSlices和colSlices都不为null
+        if (rowSlices != null && colSlices != null) {
+            validateSetItemIndices(rowSlices, colSlices, data.length, rows, cols);
+            setItemPointIndices(array, rowSlices, colSlices, data, cols);
+            return array;
+        }
+
+        // 处理矩形切片模式
+        if (rowSlices == null && colSlices == null) {
+            // 完整矩阵赋值
+            if (data.length != array.shape.size()) {
+                throw new IllegalArgumentException(
+                        String.format("完整矩阵赋值：数据长度(%d)必须等于数组大小(%d)",
+                                data.length, array.shape.size()));
+            }
+            System.arraycopy(data, 0, array.buffer, 0, data.length);
+            return array;
+        }
+
+        // 部分矩形切片赋值（需要更复杂的实现）
+        throw new IllegalArgumentException(
+                "当前仅支持点索引模式（rowSlices和colSlices都不为null）和完整矩阵赋值（两者都为null）");
+    }
+
+    /**
+     * 点索引模式：设置指定坐标点的值
+     *
+     * @param array      目标数组
+     * @param rowSlices  行索引数组
+     * @param colSlices  列索引数组
+     * @param data       要设置的数据
+     * @param cols       目标数组列数
+     */
+    private static void setItemPointIndices(NdArrayCpu array, int[] rowSlices, int[] colSlices,
+                                           float[] data, int cols) {
+        float[] buf = array.buffer;
+        int count = data.length;
+
+        // 预计算索引，避免循环内重复计算
+        for (int i = 0; i < count; i++) {
+            int index = rowSlices[i] * cols + colSlices[i];
+            buf[index] = data[i];
+        }
+    }
+
+    /**
+     * 验证setItem操作的索引有效性
+     */
+    private static void validateSetItemIndices(int[] rowSlices, int[] colSlices, int dataLength,
+                                              int maxRows, int maxCols) {
+        if (rowSlices.length != colSlices.length) {
+            throw new IllegalArgumentException(
+                    String.format("点索引模式：行索引数组长度(%d)必须等于列索引数组长度(%d)",
+                            rowSlices.length, colSlices.length));
+        }
+
+        if (rowSlices.length != dataLength) {
+            throw new IllegalArgumentException(
+                    String.format("索引数组长度(%d)必须等于数据数组长度(%d)",
+                            rowSlices.length, dataLength));
+        }
+
+        // 验证索引范围
+        validateSliceRange(rowSlices, maxRows, "行");
+        validateSliceRange(colSlices, maxCols, "列");
     }
 }
 

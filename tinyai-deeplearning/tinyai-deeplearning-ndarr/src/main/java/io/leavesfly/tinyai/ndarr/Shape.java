@@ -1,14 +1,29 @@
 package io.leavesfly.tinyai.ndarr;
 
-
 import io.leavesfly.tinyai.ndarr.cpu.ShapeCpu;
 
+/**
+ * 形状接口，用于描述N维数组的形状信息
+ */
 public interface Shape {
 
+    /**
+     * 创建一个二维形状
+     *
+     * @param row    行数
+     * @param column 列数
+     * @return Shape实例
+     */
     static Shape of(int row, int column) {
         return of(new int[]{row, column});
     }
 
+    /**
+     * 根据维度数组创建形状
+     *
+     * @param _dimension 维度数组
+     * @return Shape实例
+     */
     static Shape of(int... _dimension) {
         //先写死
         return new ShapeCpu(_dimension);

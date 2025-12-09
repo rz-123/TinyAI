@@ -812,7 +812,6 @@ public class NdArrayCpu implements NdArray, Serializable {
     }
 
 
-
     //    # =============================================================================
     //       其他的运算
     //    # =============================================================================
@@ -907,10 +906,14 @@ public class NdArrayCpu implements NdArray, Serializable {
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
 
         NdArrayCpu other = (NdArrayCpu) obj;
-        if (!this.shape.equals(other.shape)) return false;
+        if (!this.shape.equals(other.shape)) {
+            return false;
+        }
 
         return Arrays.equals(this.buffer, other.buffer);
     }

@@ -196,6 +196,15 @@ public class ShapeCpu implements Serializable, Shape {
         return hashCodeCache;
     }
 
+    public static ShapeCpu of(int... _dimension) {
+        return new ShapeCpu(_dimension);
+    }
+
+    @Override
+    public int[] getShapeDims() {
+        return dimension;
+    }
+
     @Override
     public String toString() {
         StringBuilder stringBuilder = new StringBuilder();
@@ -210,13 +219,4 @@ public class ShapeCpu implements Serializable, Shape {
         return stringBuilder.toString();
     }
 
-
-    public static ShapeCpu of(int... _dimension) {
-        return new ShapeCpu(_dimension);
-    }
-
-    @Override
-    public int[] getShapeDims() {
-        return dimension;
-    }
 }

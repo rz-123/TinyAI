@@ -38,7 +38,7 @@ public class ParallelTrainingTest {
             SpiralDateSet dataSet = new SpiralDateSet(batchSize);
 
             // 创建模型
-            io.leavesfly.tinyai.ml.Model model = createModel("并行训练模型");
+            Model model = createModel("并行训练模型");
 
             // 创建损失函数和优化器
             SoftmaxCrossEntropy loss = new SoftmaxCrossEntropy();

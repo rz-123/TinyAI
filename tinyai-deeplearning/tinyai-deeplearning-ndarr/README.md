@@ -15,35 +15,27 @@
 
 ## 架构设计
 
-```mermaid
-graph TB
-    subgraph "核心接口层"
-        NdArray[NdArray接口]
-        Shape[Shape接口]
-        NdArrayUtil[NdArrayUtil工具类]
-    end
-    
-    subgraph "CPU实现"
-        NdArrayCpu[NdArrayCpu]
-        ShapeCpu[ShapeCpu]
-    end
-    
-    subgraph "GPU实现"
-        NdArrayGpu[NdArrayGpu]
-        ShapeGpu[ShapeGpu]
-    end
-    
-    subgraph "TPU实现"
-        NdArrayTpu[NdArrayTpu]
-        ShapeTpu[ShapeTpu]
-    end
-    
-    NdArray --> NdArrayCpu
-    NdArray --> NdArrayGpu
-    NdArray --> NdArrayTpu
-    Shape --> ShapeCpu
-    Shape --> ShapeGpu
-    Shape --> ShapeTpu
+
+**架构图（文本版）**：
+
+```
+                    ┌─────────────────────────────┐
+                    │      核心接口层              │
+                    ├─────────────────────────────┤
+                    │  • NdArray接口              │
+                    │  • Shape接口                │
+                    │  • NdArrayUtil工具类         │
+                    └───────┬─────────────────────┘
+                            │
+            ┌───────────────┼───────────────┐
+            │               │               │
+            ▼               ▼               ▼
+    ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+    │   CPU实现     │ │   GPU实现     │ │   TPU实现     │
+    ├──────────────┤ ├──────────────┤ ├──────────────┤
+    │ NdArrayCpu   │ │ NdArrayGpu   │ │ NdArrayTpu   │
+    │ ShapeCpu     │ │ ShapeGpu     │ │ ShapeTpu     │
+    └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
 ## 快速开始
