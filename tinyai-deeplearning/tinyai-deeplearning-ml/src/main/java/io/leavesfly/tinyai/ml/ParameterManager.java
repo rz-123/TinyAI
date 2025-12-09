@@ -79,6 +79,9 @@ public class ParameterManager {
      * @return 成功复制的参数数量
      */
     public static int copyParameters(Model sourceModel, Model targetModel, boolean strict) {
+        if (sourceModel == null || targetModel == null) {
+            throw new IllegalArgumentException("模型不能为空");
+        }
         ValidationUtils.requireNonNull(sourceModel, "sourceModel");
         ValidationUtils.requireNonNull(targetModel, "targetModel");
 

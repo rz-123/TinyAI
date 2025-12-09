@@ -50,11 +50,15 @@ public class MaskedSoftmaxCELoss extends Loss {
      * @return 掩码后的平均损失值
      */
     public Variable maskedSoftmaxCrossEntropy(Variable y, Variable predict, int padToken) {
-        // 创建掩码，标识非填充位置
+        validateInputs(y, predict);
+
+        // 先创建掩码，再将标签中填充位修正到合法下标，避免 -1 等非法索引导致 getItem 抛错
         Variable mask = createMask(y, padToken);
-        
+        int vocabSize = predict.getValue().getShape().getDimension(2);
+        Variable sanitizedLabels = sanitizeLabels(y, padToken, vocabSize);
+
         // 计算常规的softmax交叉熵损失
-        Variable loss = computeSoftmaxCrossEntropy(y, predict);
+        Variable loss = computeSoftmaxCrossEntropy(sanitizedLabels, predict);
         
         // 应用掩码
         Variable maskedLoss = applyMask(loss, mask);
@@ -71,6 +75,7 @@ public class MaskedSoftmaxCELoss extends Loss {
      * @return 掩码后的平均损失值
      */
     public Variable maskedSoftmaxCrossEntropyWithMask(Variable y, Variable predict, Variable mask) {
+        validateInputs(y, predict);
         // 计算常规的softmax交叉熵损失
         Variable loss = computeSoftmaxCrossEntropy(y, predict);
         
@@ -103,6 +108,31 @@ public class MaskedSoftmaxCELoss extends Loss {
         }
         
         return new Variable(NdArray.of(mask));
+    }
+
+    /**
+     * 将标签中的填充或非法索引修正到合法范围，防止后续索引越界
+     */
+    private Variable sanitizeLabels(Variable labels, int padToken, int vocabSize) {
+        NdArray labelsArray = labels.getValue();
+        float[][] src = labelsArray.getMatrix();
+        float[][] sanitized = new float[src.length][src[0].length];
+
+        for (int i = 0; i < src.length; i++) {
+            for (int j = 0; j < src[i].length; j++) {
+                int idx = Math.round(src[i][j]);
+                if (idx == padToken) {
+                    idx = 0; // 任意合法类别，后续会被mask掉
+                } else if (idx < 0) {
+                    idx = 0;
+                } else if (idx >= vocabSize) {
+                    idx = vocabSize - 1;
+                }
+                sanitized[i][j] = idx;
+            }
+        }
+
+        return new Variable(NdArray.of(sanitized));
     }
     
     /**

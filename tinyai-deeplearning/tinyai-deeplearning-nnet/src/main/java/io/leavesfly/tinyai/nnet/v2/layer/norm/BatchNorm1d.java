@@ -220,7 +220,8 @@ public class BatchNorm1d extends Module {
     private Variable normalize(Variable x, Variable mean, Variable var) {
         // normalized = (x - mean) / sqrt(var + eps)
         Variable centered = x.sub(mean);
-        Variable std = var.add(new Variable(eps)).sqrt();
+        // 将标量eps广播为与方差相同的形状，避免形状(1,1)导致广播失败
+        Variable std = var.add(new Variable(var.getValue().like(eps))).sqrt();
         return centered.div(std);
     }
 

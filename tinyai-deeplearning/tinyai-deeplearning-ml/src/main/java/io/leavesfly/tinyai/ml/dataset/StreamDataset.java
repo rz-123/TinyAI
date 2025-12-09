@@ -3,8 +3,6 @@ package io.leavesfly.tinyai.ml.dataset;
 import io.leavesfly.tinyai.ndarr.NdArray;
 
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.function.Supplier;
 
 /**
@@ -91,61 +89,87 @@ public class StreamDataset extends DataSet {
         if (dataSourceSupplier == null) {
             throw new IllegalStateException("数据源未设置，请先调用setDataSource方法");
         }
-        
-        List<Batch> batches = new ArrayList<>();
+
         Iterator<DataItem> dataIterator = dataSourceSupplier.get();
-        
-        // 使用缓存队列来缓存数据
-        BlockingQueue<DataItem> cache = new ArrayBlockingQueue<>(cacheSize);
-        List<DataItem> currentBatch = new ArrayList<>(batchSize);
-        
-        while (dataIterator.hasNext() || !cache.isEmpty()) {
-            // 预取数据到缓存
-            while (cache.remainingCapacity() > 0 && dataIterator.hasNext()) {
-                try {
-                    cache.put(dataIterator.next());
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+        List<Batch> batches = new ArrayList<>();
+
+        // 复用数组以减少对象创建，最后一个批次不足时会做一次复制
+        NdArray[] xs = new NdArray[batchSize];
+        NdArray[] ys = new NdArray[batchSize];
+        int cursor = 0;
+
+        if (shuffled) {
+            // 使用有限缓存窗口做局部洗牌，兼顾随机性与内存占用
+            List<DataItem> buffer = new ArrayList<>(cacheSize);
+            while (dataIterator.hasNext()) {
+                buffer.add(dataIterator.next());
+                if (buffer.size() == cacheSize) {
+                    Collections.shuffle(buffer, random);
+                    for (DataItem item : buffer) {
+                        xs[cursor] = item.getX();
+                        ys[cursor] = item.getY();
+                        cursor++;
+                        if (cursor == batchSize) {
+                            batches.add(new Batch(xs, ys));
+                            xs = new NdArray[batchSize];
+                            ys = new NdArray[batchSize];
+                            cursor = 0;
+                        }
+                    }
+                    buffer.clear();
                 }
             }
-            
-            // 从缓存中取数据构建批次
-            while (currentBatch.size() < batchSize && !cache.isEmpty()) {
-                DataItem item = cache.poll();
-                if (item != null) {
-                    currentBatch.add(item);
+
+            if (!buffer.isEmpty()) {
+                Collections.shuffle(buffer, random);
+                for (DataItem item : buffer) {
+                    xs[cursor] = item.getX();
+                    ys[cursor] = item.getY();
+                    cursor++;
+                    if (cursor == batchSize) {
+                        batches.add(new Batch(xs, ys));
+                        xs = new NdArray[batchSize];
+                        ys = new NdArray[batchSize];
+                        cursor = 0;
+                    }
                 }
             }
-            
-            // 当批次满了或者没有更多数据时，创建Batch
-            if (currentBatch.size() == batchSize || (cache.isEmpty() && !dataIterator.hasNext())) {
-                if (!currentBatch.isEmpty()) {
-                    batches.add(createBatch(currentBatch));
-                    currentBatch.clear();
+        } else {
+            while (dataIterator.hasNext()) {
+                DataItem item = dataIterator.next();
+                xs[cursor] = item.getX();
+                ys[cursor] = item.getY();
+                cursor++;
+
+                if (cursor == batchSize) {
+                    batches.add(new Batch(xs, ys));
+                    xs = new NdArray[batchSize];
+                    ys = new NdArray[batchSize];
+                    cursor = 0;
                 }
             }
         }
-        
+
+        if (cursor > 0) {
+            batches.add(createBatch(xs, ys, cursor));
+        }
+
         return batches;
     }
     
     /**
-     * 从数据项列表创建批次
-     * @param dataItems 数据项列表
+     * 将累积的数组封装为批次
+     * @param xs 输入数据
+     * @param ys 输出数据
+     * @param size 实际长度
      * @return 批次对象
      */
-    private Batch createBatch(List<DataItem> dataItems) {
-        NdArray[] xs = new NdArray[dataItems.size()];
-        NdArray[] ys = new NdArray[dataItems.size()];
-        
-        for (int i = 0; i < dataItems.size(); i++) {
-            DataItem item = dataItems.get(i);
-            xs[i] = item.getX();
-            ys[i] = item.getY();
+    private Batch createBatch(NdArray[] xs, NdArray[] ys, int size) {
+        if (size == xs.length) {
+            return new Batch(xs, ys);
         }
-        
-        return new Batch(xs, ys);
+        // 复制有效区间，避免后续写入污染Batch数据
+        return new Batch(Arrays.copyOf(xs, size), Arrays.copyOf(ys, size));
     }
 
     @Override
@@ -337,7 +361,7 @@ public class StreamDataset extends DataSet {
          * 判断索引位置的数据是否属于指定用途
          */
         private boolean belongsToUsage(int index, Usage usage) {
-            if (splitConfig == null) {
+            if (splitConfig == null || totalSize <= 0) {
                 return usage == Usage.TRAIN; // 默认都是训练数据
             }
             
