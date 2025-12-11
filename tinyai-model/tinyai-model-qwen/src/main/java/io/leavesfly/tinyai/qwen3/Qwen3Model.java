@@ -1,276 +1,217 @@
 package io.leavesfly.tinyai.qwen3;
 
+import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.Model;
+import io.leavesfly.tinyai.ndarr.NdArray;
 
 /**
- * Qwen3模型 - 完整的因果语言模型
+ * Qwen3模型类
  * 
- * 继承自TinyAI的Model类，封装Qwen3Block并提供完整的模型管理功能：
- * 1. 模型初始化和配置管理
- * 2. 前向传播和推理
- * 3. 模型保存和加载
- * 4. 模型信息统计
- * 5. 训练状态管理
+ * Qwen3是基于现代Transformer架构的大语言模型，集成了：
+ * 1. RMSNorm归一化
+ * 2. 旋转位置编码(RoPE)
+ * 3. 分组查询注意力(GQA)
+ * 4. SwiGLU激活函数
  * 
- * 该模型可用于：
- * - 文本生成任务
- * - 语言建模
- * - 对话系统
- * - 文本补全
+ * 本实现完全基于TinyAI框架的V2 API，遵循Model-Module-Variable设计模式。
  * 
- * @author 山泽
+ * @author leavesfly
  * @version 1.0
  */
 public class Qwen3Model extends Model {
     
-    /** Qwen3配置 */
-    private Qwen3Config config;
-    
-    /** Qwen3核心网络块 */
-    private Qwen3Block qwen3Block;
+    private final Qwen3Config config;
     
     /**
-     * 构造Qwen3模型（带语言模型头）
+     * 构造函数
      * 
      * @param name 模型名称
      * @param config Qwen3配置
      */
     public Qwen3Model(String name, Qwen3Config config) {
-        this(name, config, true);
-    }
-    
-    /**
-     * 构造Qwen3模型
-     * 
-     * @param name 模型名称
-     * @param config Qwen3配置
-     * @param withLMHead 是否包含语言模型头
-     */
-    public Qwen3Model(String name, Qwen3Config config, boolean withLMHead) {
-        super(name, createQwen3Block(name + "_block", config, withLMHead));
-        
+        super(name, new Qwen3Block(name + "_main", config, true));
         this.config = config;
-        this.qwen3Block = (Qwen3Block) getBlock();
-        
-        // 初始化模型信息
-        initializeModelInfo();
+        setDescription(buildDescription());
     }
     
     /**
-     * 创建Qwen3Block
-     * 
-     * @param blockName Block名称
-     * @param config Qwen3配置
-     * @param withLMHead 是否包含语言模型头
-     * @return 创建的Qwen3Block
+     * 构建模型描述
      */
-    private static Qwen3Block createQwen3Block(String blockName, Qwen3Config config, boolean withLMHead) {
-        // 验证配置
-        config.validate();
-        
-        return new Qwen3Block(blockName, config, withLMHead);
-    }
-    
-    /**
-     * 初始化模型信息
-     */
-    private void initializeModelInfo() {
-        if (getModelInfo() != null) {
-            // 设置模型架构类型
-            getModelInfo().setArchitectureType("Qwen3");
-            
-            // 设置模型描述
-            String description = String.format(
-                "Qwen3大语言模型 - %d层解码器，%d注意力头，%d参数",
-                config.getNumHiddenLayers(),
-                config.getNumAttentionHeads(),
-                qwen3Block.countParameters()
-            );
-            getModelInfo().setDescription(description);
-            
-            // 添加配置信息作为元数据
-            getModelInfo().addMetric("vocab_size", config.getVocabSize());
-            getModelInfo().addMetric("hidden_size", config.getHiddenSize());
-            getModelInfo().addMetric("num_layers", config.getNumHiddenLayers());
-            getModelInfo().addMetric("num_attention_heads", config.getNumAttentionHeads());
-            getModelInfo().addMetric("num_key_value_heads", config.getNumKeyValueHeads());
-            getModelInfo().addMetric("intermediate_size", config.getIntermediateSize());
-            getModelInfo().addMetric("max_position_embeddings", config.getMaxPositionEmbeddings());
-        }
-    }
-    
-    /**
-     * 创建小型Qwen3模型用于测试
-     * 
-     * @param name 模型名称
-     * @return 小型Qwen3模型
-     */
-    public static Qwen3Model createSmallModel(String name) {
-        Qwen3Config smallConfig = Qwen3Config.createSmallConfig();
-        return new Qwen3Model(name, smallConfig);
-    }
-    
-    /**
-     * 创建演示Qwen3模型
-     * 
-     * @param name 模型名称
-     * @return 演示Qwen3模型
-     */
-    public static Qwen3Model createDemoModel(String name) {
-        Qwen3Config demoConfig = Qwen3Config.createDemoConfig();
-        return new Qwen3Model(name, demoConfig);
-    }
-    
-    /**
-     * 获取模型配置
-     * 
-     * @return Qwen3配置
-     */
-    public Qwen3Config getConfig() {
-        return config;
-    }
-    
-    /**
-     * 获取Qwen3核心块
-     * 
-     * @return Qwen3Block
-     */
-    public Qwen3Block getQwen3Block() {
-        return qwen3Block;
-    }
-    
-    /**
-     * 计算模型参数数量
-     * 
-     * @return 参数总数
-     */
-    public long countParameters() {
-        return qwen3Block.countParameters();
-    }
-    
-    /**
-     * 获取模型大小（MB）
-     * 
-     * @return 模型大小，假设使用FP32
-     */
-    public double getModelSizeMB() {
-        return countParameters() * 4.0 / 1024.0 / 1024.0;
-    }
-    
-    /**
-     * 判断模型是否包含语言模型头
-     * 
-     * @return 是否包含语言模型头
-     */
-    public boolean hasLMHead() {
-        return qwen3Block.isWithLMHead();
-    }
-    
-    /**
-     * 获取模型详细信息
-     * 
-     * @return 详细信息字符串
-     */
-    @Override
-    public String getModelDetailedInfo() {
-        StringBuilder info = new StringBuilder();
-        info.append("=== Qwen3模型详细信息 ===\n");
-        info.append(String.format("模型名称: %s\n", getName()));
-        info.append(String.format("架构类型: %s\n", "Qwen3 Transformer"));
-        info.append(String.format("参数数量: %,d (%.2f MB)\n", countParameters(), getModelSizeMB()));
-        info.append(String.format("包含语言模型头: %s\n", hasLMHead() ? "是" : "否"));
-        
-        info.append("\n=== 架构配置 ===\n");
-        info.append(String.format("词汇表大小: %,d\n", config.getVocabSize()));
-        info.append(String.format("隐藏维度: %d\n", config.getHiddenSize()));
-        info.append(String.format("中间维度: %d\n", config.getIntermediateSize()));
-        info.append(String.format("层数: %d\n", config.getNumHiddenLayers()));
-        info.append(String.format("注意力头数: %d\n", config.getNumAttentionHeads()));
-        info.append(String.format("键值头数: %d\n", config.getNumKeyValueHeads()));
-        info.append(String.format("头维度: %d\n", config.getHeadDim()));
-        info.append(String.format("最大位置编码: %d\n", config.getMaxPositionEmbeddings()));
-        info.append(String.format("RoPE基础频率: %.1f\n", config.getRopeTheta()));
-        info.append(String.format("RMSNorm epsilon: %.0e\n", config.getRmsNormEps()));
-        
-        info.append("\n=== 特殊标记 ===\n");
-        info.append(String.format("填充标记ID: %d\n", config.getPadTokenId()));
-        info.append(String.format("开始标记ID: %d\n", config.getBosTokenId()));
-        info.append(String.format("结束标记ID: %d\n", config.getEosTokenId()));
-        info.append(String.format("共享词嵌入权重: %s\n", config.isTieWordEmbeddings() ? "是" : "否"));
-        
-        // 添加基础模型信息
-        String baseInfo = super.getModelDetailedInfo();
-        if (baseInfo != null && !baseInfo.isEmpty()) {
-            info.append("\n=== 训练信息 ===\n");
-            info.append(baseInfo);
-        }
-        
-        return info.toString();
-    }
-    
-    /**
-     * 获取模型简要信息
-     * 
-     * @return 简要信息字符串
-     */
-    @Override
-    public String getModelSummary() {
+    private String buildDescription() {
         return String.format(
-            "Qwen3模型[%s]: %d层, %d头, %,d参数 (%.1fMB)",
-            getName(),
+            "Qwen3语言模型 | 参数量: %s | 层数: %d | 维度: %d | 头数: %d | 架构: Pre-RMSNorm+GQA+SwiGLU",
+            formatParamCount(config.estimateParameterCount()),
             config.getNumHiddenLayers(),
-            config.getNumAttentionHeads(),
-            countParameters(),
-            getModelSizeMB()
+            config.getHiddenSize(),
+            config.getNumAttentionHeads()
         );
     }
     
     /**
-     * 验证输入数据
-     * 
-     * @param inputIds 输入token ID
-     * @throws IllegalArgumentException 如果输入无效
+     * 格式化参数数量
      */
-    public void validateInput(int[][] inputIds) {
-        if (inputIds == null || inputIds.length == 0) {
-            throw new IllegalArgumentException("输入不能为空");
+    private String formatParamCount(long count) {
+        if (count >= 1_000_000_000) {
+            return String.format("%.2fB", count / 1_000_000_000.0);
+        } else if (count >= 1_000_000) {
+            return String.format("%.2fM", count / 1_000_000.0);
+        } else {
+            return String.format("%,d", count);
+        }
+    }
+    
+    // ==================== 工厂方法 ====================
+    
+    /**
+     * 创建小型Qwen3模型（用于测试）
+     */
+    public static Qwen3Model createSmallModel(String name) {
+        return new Qwen3Model(name, Qwen3Config.createSmallConfig());
+    }
+    
+    /**
+     * 创建演示Qwen3模型
+     */
+    public static Qwen3Model createDemoModel(String name) {
+        return new Qwen3Model(name, Qwen3Config.createDemoConfig());
+    }
+    
+    /**
+     * 创建标准Qwen3模型
+     */
+    public static Qwen3Model createStandardModel(String name) {
+        return new Qwen3Model(name, Qwen3Config.createStandardConfig());
+    }
+    
+    // ==================== 推理方法 ====================
+    
+    /**
+     * 标准预测方法
+     * 
+     * @param tokenIds token ID序列 [batch_size, seq_len]
+     * @return logits输出 [batch_size, seq_len, vocab_size]
+     */
+    public Variable predict(Variable tokenIds) {
+        return forward(tokenIds);
+    }
+    
+    /**
+     * 生成序列（简化版贪婪解码）
+     * 
+     * @param promptIds 提示词token ID序列 [batch_size, prompt_len]
+     * @param maxNewTokens 最大生成token数量
+     * @return 生成的完整序列 [batch_size, prompt_len + maxNewTokens]
+     */
+    public NdArray generateSequence(NdArray promptIds, int maxNewTokens) {
+        int batchSize = promptIds.getShape().getDimension(0);
+        int promptLen = promptIds.getShape().getDimension(1);
+        
+        float[][] generatedSeq = new float[batchSize][promptLen + maxNewTokens];
+        
+        // 复制提示词
+        for (int b = 0; b < batchSize; b++) {
+            for (int t = 0; t < promptLen; t++) {
+                generatedSeq[b][t] = promptIds.get(b, t);
+            }
         }
         
-        for (int[] sequence : inputIds) {
-            if (sequence == null || sequence.length == 0) {
-                throw new IllegalArgumentException("序列不能为空");
+        // 自回归生成
+        for (int i = 0; i < maxNewTokens; i++) {
+            int currentLen = promptLen + i;
+            float[][] currentInput = new float[batchSize][currentLen];
+            for (int b = 0; b < batchSize; b++) {
+                System.arraycopy(generatedSeq[b], 0, currentInput[b], 0, currentLen);
             }
             
-            for (int tokenId : sequence) {
-                if (tokenId < 0 || tokenId >= config.getVocabSize()) {
-                    throw new IllegalArgumentException(
-                        String.format("token ID %d 超出词汇表范围 [0, %d)", 
-                            tokenId, config.getVocabSize()));
-                }
+            // 预测下一个token
+            Variable logits = predict(new Variable(NdArray.of(currentInput)));
+            NdArray logitsArray = logits.getValue();
+            
+            // 贪婪选择
+            for (int b = 0; b < batchSize; b++) {
+                int nextToken = argmax(logitsArray, b, currentLen - 1);
+                generatedSeq[b][currentLen] = nextToken;
             }
         }
+        
+        return NdArray.of(generatedSeq);
     }
     
     /**
-     * 设置模型为推理模式
-     * 
-     * 该方法主要用于标记模型状态，实际的推理逻辑在TinyAI框架中
-     * 通过Variable的计算图自动处理
+     * 查找最大值的索引(argmax)
      */
-    public void setInferenceMode() {
-        // TinyAI框架中推理模式通过不计算梯度来实现
-        // 这里主要用于状态标记和未来扩展  
-        if (getModelInfo() != null) {
-            getModelInfo().addMetric("inference_mode", 1.0);
+    private int argmax(NdArray logits, int batchIdx, int seqIdx) {
+        int vocabSize = logits.getShape().getDimension(2);
+        int maxIdx = 0;
+        float maxVal = logits.get(batchIdx, seqIdx, 0);
+        
+        for (int i = 1; i < vocabSize; i++) {
+            float val = logits.get(batchIdx, seqIdx, i);
+            if (val > maxVal) {
+                maxVal = val;
+                maxIdx = i;
+            }
         }
+        return maxIdx;
+    }
+    
+    // ==================== 模型信息 ====================
+    
+    /**
+     * 打印模型详细信息
+     */
+    @Override
+    public void printModelInfo() {
+        System.out.println("=".repeat(80));
+        System.out.println("Qwen3 模型详细信息");
+        System.out.println("=".repeat(80));
+        System.out.println("模型名称: " + getName());
+        System.out.println("模型描述: " + buildDescription());
+        System.out.println("-".repeat(80));
+        System.out.println(config);
+        System.out.println("=".repeat(80));
     }
     
     /**
-     * 设置模型为训练模式
+     * 获取配置摘要
      */
-    public void setTrainingMode() {
-        if (getModelInfo() != null) {
-            getModelInfo().addMetric("inference_mode", 0.0);
-        }
+    public String getConfigSummary() {
+        return String.format(
+            "Qwen3配置摘要:\n" +
+            "  - 词汇表大小: %,d\n" +
+            "  - 隐藏维度: %d\n" +
+            "  - 中间层维度: %d\n" +
+            "  - Transformer层数: %d\n" +
+            "  - 注意力头数: %d\n" +
+            "  - 键值头数: %d\n" +
+            "  - 最大序列长度: %d\n" +
+            "  - 架构: Pre-RMSNorm + GQA + SwiGLU\n" +
+            "  - 估算总参数: %s",
+            config.getVocabSize(),
+            config.getHiddenSize(),
+            config.getIntermediateSize(),
+            config.getNumHiddenLayers(),
+            config.getNumAttentionHeads(),
+            config.getNumKeyValueHeads(),
+            config.getMaxPositionEmbeddings(),
+            formatParamCount(config.estimateParameterCount())
+        );
+    }
+    
+    // ==================== Getter方法 ====================
+    
+    public Qwen3Config getConfig() {
+        return config;
+    }
+    
+    @Override
+    public String toString() {
+        return String.format(
+            "Qwen3Model{name='%s', params=%s, nLayer=%d, hiddenSize=%d}",
+            getName(), 
+            formatParamCount(config.estimateParameterCount()),
+            config.getNumHiddenLayers(), 
+            config.getHiddenSize()
+        );
     }
 }

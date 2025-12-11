@@ -1,401 +1,228 @@
 package io.leavesfly.tinyai.deepseek.v3;
 
-import io.leavesfly.tinyai.ml.evaluator.Evaluator;
-import io.leavesfly.tinyai.ml.loss.MeanSquaredLoss;
-import io.leavesfly.tinyai.ml.optimize.SGD;
-import io.leavesfly.tinyai.ml.Monitor;
+import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.ndarr.Shape;
-import java.util.List;
 
 /**
- * DeepSeek V3模型演示类
+ * DeepSeek-V3模型演示程序
  * 
- * 展示了DeepSeek V3模型的各种功能和用法，包括：
- * 1. 模型初始化和配置
- * 2. 不同任务类型的推理演示
- * 3. 代码生成功能演示
- * 4. 推理过程分析
- * 5. MoE专家使用统计
- * 6. 强化学习训练演示
+ * 演示DeepSeek-V3的核心功能：
+ * 1. 模型创建和配置
+ * 2. 混合专家(MoE)推理
+ * 3. 任务感知路由
+ * 4. 代码生成优化
+ * 5. 多种推理策略
  * 
  * @author leavesfly
  * @version 1.0
  */
 public class DeepSeekV3Demo {
     
-    /**
-     * 重复字符生成辅助方法（Java 8兼容）
-     */
-    private static String repeatChar(char c, int count) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < count; i++) {
-            sb.append(c);
-        }
-        return sb.toString();
-    }
-    
     public static void main(String[] args) {
-        System.out.println("=== DeepSeek V3 模型演示 ===\n");
+        System.out.println("=".repeat(80));
+        System.out.println("DeepSeek-V3 模型演示程序");
+        System.out.println("=".repeat(80));
         
-        try {
-            // 1. 模型初始化演示
-            demonstrateModelInitialization();
-            
-            // 2. 基础推理演示
-            demonstrateBasicInference();
-            
-            // 3. 任务类型感知推理演示
-            demonstrateTaskTypeAwareInference();
-            
-            // 4. 代码生成演示
-            demonstrateCodeGeneration();
-            
-            // 5. 推理过程分析演示
-            demonstrateReasoningAnalysis();
-            
-            // 6. MoE专家使用演示
-            demonstrateExpertUsage();
-            
-            // 7. 模型统计信息演示
-            demonstrateModelStatistics();
-            
-            // 8. 强化学习训练演示（简化版）
-            demonstrateRLTraining();
-            
-        } catch (Exception e) {
-            System.err.println("演示过程中发生错误: " + e.getMessage());
-            e.printStackTrace();
-        }
+        // 运行所有示例
+        example1_CreateModel();
+        example2_CodeGeneration();
+        example3_ReasoningTask();
+        example4_MathTask();
+        example5_MoEAnalysis();
         
-        System.out.println("\n=== DeepSeek V3 演示完成 ===");
+        System.out.println("=".repeat(80));
+        System.out.println("所有示例完成!");
+        System.out.println("=".repeat(80));
     }
     
     /**
-     * 1. 模型初始化演示
+     * 示例1：创建模型并查看配置
      */
-    private static void demonstrateModelInitialization() {
-        System.out.println("1. 模型初始化演示");
-        System.out.println(repeatChar('-', 50));
+    public static void example1_CreateModel() {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("示例1: 创建DeepSeek-V3模型");
+        System.out.println("=".repeat(80));
         
-        // 创建不同规模的模型配置
-        DeepSeekV3Model.V3ModelConfig smallConfig = DeepSeekV3Model.V3ModelConfig.getSmallConfig();
-        DeepSeekV3Model.V3ModelConfig defaultConfig = DeepSeekV3Model.V3ModelConfig.getDefaultConfig();
-        DeepSeekV3Model.V3ModelConfig largeConfig = DeepSeekV3Model.V3ModelConfig.getLargeConfig();
+        // 创建小型模型（用于演示）
+        DeepSeekV3Model model = DeepSeekV3Model.createSmallModel("DeepSeek-V3-Small");
         
-        // 创建模型实例
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Demo", defaultConfig);
+        // 打印模型信息
+        model.printModelInfo();
         
-        // 打印模型架构信息
-        model.printArchitecture();
+        // 打印配置摘要
+        System.out.println("\n" + model.getConfigSummary());
         
-        // 显示模型配置对比
-        System.out.println("\n模型配置对比:");
-        System.out.printf("小型配置: 词汇%d, 维度%d, 层数%d, 专家%d%n", 
-                         smallConfig.vocabSize, smallConfig.dModel, smallConfig.numLayers, smallConfig.numExperts);
-        System.out.printf("标准配置: 词汇%d, 维度%d, 层数%d, 专家%d%n", 
-                         defaultConfig.vocabSize, defaultConfig.dModel, defaultConfig.numLayers, defaultConfig.numExperts);
-        System.out.printf("大型配置: 词汇%d, 维度%d, 层数%d, 专家%d%n", 
-                         largeConfig.vocabSize, largeConfig.dModel, largeConfig.numLayers, largeConfig.numExperts);
-        
-        System.out.println();
+        System.out.println("\n✅ 模型创建成功");
     }
     
     /**
-     * 2. 基础推理演示
+     * 示例2：代码生成任务（V3的核心优势）
      */
-    private static void demonstrateBasicInference() {
-        System.out.println("2. 基础推理演示");
-        System.out.println(repeatChar('-', 50));
+    public static void example2_CodeGeneration() {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("示例2: 代码生成任务");
+        System.out.println("=".repeat(80));
         
         // 创建模型
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Basic");
+        DeepSeekV3Model model = DeepSeekV3Model.createTinyModel("DeepSeek-V3-Code");
         
-        // 创建模拟输入数据
-        NdArray inputIds = createSampleInput(2, 10); // batch_size=2, seq_len=10
-        
-        System.out.println("输入数据形状: " + inputIds.getShape());
-        
-        // 执行基础推理
-        DeepSeekV3Block.DeepSeekV3Output output = model.generate(inputIds);
-        
-        System.out.println("输出logits形状: " + output.logits.getValue().getShape());
-        System.out.println("推理步骤数量: " + output.reasoningSteps.size());
-        System.out.println("推理质量评分: " + String.format("%.3f", output.getReasoningQuality()));
-        System.out.println("MoE损失: " + String.format("%.4f", output.moeLoss));
-        System.out.println("识别的任务类型: " + output.identifiedTaskType);
-        
-        System.out.println();
-    }
-    
-    /**
-     * 3. 任务类型感知推理演示
-     */
-    private static void demonstrateTaskTypeAwareInference() {
-        System.out.println("3. 任务类型感知推理演示");
-        System.out.println(repeatChar('-', 50));
-        
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-TaskAware");
-        NdArray inputIds = createSampleInput(1, 8);
-        
-        // 测试不同任务类型
-        TaskType[] taskTypes = {TaskType.GENERAL, TaskType.REASONING, TaskType.CODING, TaskType.MATH};
-        
-        for (TaskType taskType : taskTypes) {
-            System.out.println("任务类型: " + taskType);
-            
-            DeepSeekV3Block.DeepSeekV3Output output = model.generateWithTaskType(inputIds, taskType);
-            
-            System.out.printf("  推理质量: %.3f%n", output.getReasoningQuality());
-            System.out.printf("  MoE损失: %.4f%n", output.moeLoss);
-            System.out.printf("  推理步骤: %d%n", output.reasoningSteps.size());
-            
-            if (taskType == TaskType.CODING && output.codeInfo != null) {
-                System.out.printf("  代码置信度: %.3f%n", output.getCodeConfidence());
-            }
-            
-            System.out.println();
-        }
-    }
-    
-    /**
-     * 4. 代码生成演示
-     */
-    private static void demonstrateCodeGeneration() {
-        System.out.println("4. 代码生成演示");
-        System.out.println(repeatChar('-', 50));
-        
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-CodeGen");
-        NdArray inputIds = createSampleInput(1, 12);
+        // 模拟代码生成输入（提示词："编写一个Java快速排序算法"）
+        float[][] input = {
+            {1, 2, 3, 4, 5, 6, 7, 8}  // 模拟token序列
+        };
+        Variable inputVar = new Variable(NdArray.of(input));
         
         // 执行代码生成
-        DeepSeekV3Model.CodeGenerationResult codeResult = model.generateCode(inputIds);
+        System.out.println("\n任务类型: 代码生成");
+        System.out.println("输入形状: " + inputVar.getValue().getShape());
         
-        System.out.println("代码生成结果:");
-        System.out.println("  检测语言: " + codeResult.detectedLanguage);
-        System.out.printf("  语法得分: %.3f%n", codeResult.syntaxScore);
-        System.out.printf("  质量得分: %.3f%n", codeResult.qualityScore);
-        System.out.printf("  代码置信度: %.3f%n", codeResult.codeConfidence);
-        System.out.println("  推理步骤数: " + codeResult.reasoningSteps.size());
+        DeepSeekV3Model.CodeGenerationResult result = model.generateCode(inputVar);
         
-        // 显示推理步骤
-        System.out.println("\n代码生成推理步骤:");
-        for (int i = 0; i < Math.min(3, codeResult.reasoningSteps.size()); i++) {
-            V3ReasoningStep step = codeResult.reasoningSteps.get(i);
-            System.out.printf("  步骤%d: %s (置信度: %.3f)%n", 
-                             i+1, step.getThought(), step.getConfidence());
+        System.out.println("\n代码生成结果:");
+        System.out.println("  - 检测语言: " + result.detectedLanguage);
+        if (result.qualityScore != null) {
+            System.out.println("  - 代码质量:");
+            System.out.println("    * 语法正确性: " + String.format("%.2f", result.qualityScore.syntaxScore));
+            System.out.println("    * 代码结构: " + String.format("%.2f", result.qualityScore.structureScore));
+            System.out.println("    * 可读性: " + String.format("%.2f", result.qualityScore.readabilityScore));
+            System.out.println("    * 性能: " + String.format("%.2f", result.qualityScore.performanceScore));
+            System.out.println("    * 总体得分: " + String.format("%.2f", result.qualityScore.getOverallScore()));
         }
+        System.out.println("  - MoE负载均衡损失: " + String.format("%.6f", result.moeLoss));
+        System.out.println("  - 输出形状: " + result.logits.getValue().getShape());
         
-        System.out.println();
+        System.out.println("\n✅ 代码生成完成");
     }
     
     /**
-     * 5. 推理过程分析演示
+     * 示例3：推理任务（任务感知路由）
      */
-    private static void demonstrateReasoningAnalysis() {
-        System.out.println("5. 推理过程分析演示");
-        System.out.println(repeatChar('-', 50));
+    public static void example3_ReasoningTask() {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("示例3: 推理任务（任务感知）");
+        System.out.println("=".repeat(80));
         
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Reasoning");
-        NdArray inputIds = createSampleInput(1, 15);
+        // 创建模型
+        DeepSeekV3Model model = DeepSeekV3Model.createTinyModel("DeepSeek-V3-Reasoning");
         
-        // 执行推理任务
-        DeepSeekV3Model.ReasoningResult reasoningResult = model.performReasoning(inputIds);
-        
-        System.out.println("推理分析结果:");
-        System.out.printf("  平均置信度: %.3f%n", reasoningResult.averageConfidence);
-        System.out.println("  识别任务类型: " + reasoningResult.identifiedTaskType);
-        System.out.println("  推理步骤详情:");
-        
-        for (int i = 0; i < reasoningResult.reasoningSteps.size(); i++) {
-            V3ReasoningStep step = reasoningResult.reasoningSteps.get(i);
-            System.out.printf("    第%d步: %s%n", i+1, step.getThought());
-            System.out.printf("           行动: %s%n", step.getAction());
-            System.out.printf("           置信度: %.3f%n", step.getConfidence());
-            System.out.printf("           验证: %s%n", step.getVerification());
-            if (step.getSelfCorrection() != null) {
-                System.out.printf("           自我纠错: %s%n", step.getSelfCorrection());
-            }
-            System.out.println();
-        }
-    }
-    
-    /**
-     * 6. MoE专家使用演示
-     */
-    private static void demonstrateExpertUsage() {
-        System.out.println("6. MoE专家使用演示");
-        System.out.println(repeatChar('-', 50));
-        
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-MoE");
-        
-        // 为不同任务类型执行推理，观察专家使用模式
-        TaskType[] tasks = {TaskType.CODING, TaskType.MATH, TaskType.REASONING};
-        
-        for (TaskType taskType : tasks) {
-            NdArray inputIds = createSampleInput(1, 10);
-            DeepSeekV3Block.DeepSeekV3Output output = model.generateWithTaskType(inputIds, taskType);
-            
-            System.out.println("任务类型: " + taskType);
-            System.out.println("专家使用统计:");
-            
-            output.getExpertUsageStats().forEach((expertId, count) -> {
-                System.out.printf("  %s: %d次%n", expertId, count);
-            });
-            
-            System.out.printf("MoE损失: %.4f%n", output.moeLoss);
-            System.out.println();
-        }
-    }
-    
-    /**
-     * 7. 模型统计信息演示
-     */
-    private static void demonstrateModelStatistics() {
-        System.out.println("7. 模型统计信息演示");
-        System.out.println(repeatChar('-', 50));
-        
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Stats");
-        
-        // 执行几次推理以收集统计信息
-        for (int i = 0; i < 3; i++) {
-            NdArray inputIds = createSampleInput(1, 8 + i * 2);
-            TaskType taskType = TaskType.values()[i % TaskType.values().length];
-            model.generateWithTaskType(inputIds, taskType);
-        }
-        
-        // 获取和显示统计信息
-        DeepSeekV3Model.V3ModelStats stats = model.getModelStats();
-        
-        System.out.println("模型统计信息:");
-        System.out.println("  总参数量: " + stats.totalParameters);
-        System.out.println("  词汇表大小: " + stats.vocabSize);
-        System.out.println("  模型维度: " + stats.dModel);
-        System.out.println("  Transformer层数: " + stats.numLayers);
-        System.out.println("  专家数量: " + stats.numExperts);
-        System.out.println("  最大序列长度: " + stats.maxSeqLen);
-        System.out.printf("  最近MoE损失: %.4f%n", stats.lastMoeLoss);
-        System.out.printf("  最近推理质量: %.3f%n", stats.lastReasoningQuality);
-        System.out.printf("  最近代码置信度: %.3f%n", stats.lastCodeConfidence);
-        
-        if (stats.expertUsageStats != null) {
-            System.out.println("  专家使用统计: " + stats.expertUsageStats);
-        }
-        
-        // 获取详细推理信息
-        DeepSeekV3Model.DetailedInferenceInfo detailInfo = model.getLastInferenceDetails();
-        if (detailInfo != null) {
-            System.out.println("\n最近推理详情:");
-            detailInfo.printSummary();
-        }
-        
-        System.out.println();
-    }
-    
-    /**
-     * 8. 强化学习训练演示（简化版）
-     */
-    private static void demonstrateRLTraining() {
-        System.out.println("8. 强化学习训练演示（简化版）");
-        System.out.println(repeatChar('-', 50));
-        
-        // 创建模型和训练器
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-RL", 
-                                                   DeepSeekV3Model.V3ModelConfig.getSmallConfig());
-        
-        Monitor monitor = new Monitor();
-        // 创建一个简化的评估器实现
-        Evaluator evaluator = new Evaluator() {
-            @Override
-            public void evaluate() {
-                System.out.println("简化评估器: 评估完成");
-            }
+        // 模拟推理输入（提示词："如果A>B且B>C，那么A>C吗？"）
+        float[][] input = {
+            {10, 11, 12, 13, 14, 15, 16, 17}
         };
+        Variable inputVar = new Variable(NdArray.of(input));
         
-        V3RLTrainer trainer = new V3RLTrainer(2, monitor, evaluator, // 只训练2个epoch用于演示
-                                             V3RLTrainer.V3TrainingConfig.getDefaultConfig());
+        // 执行推理
+        System.out.println("\n任务类型: 逻辑推理");
+        System.out.println("输入形状: " + inputVar.getValue().getShape());
         
-        System.out.println("V3强化学习训练器已创建");
-        System.out.println("训练配置: 默认配置");
-        System.out.println("注意: 这是一个简化的演示，实际训练需要真实数据集");
+        DeepSeekV3Model.ReasoningResult result = model.performReasoning(inputVar);
         
-        // 在实际应用中，这里会初始化真实的数据集和损失函数
-        System.out.println("训练演示完成（简化版）");
+        System.out.println("\n推理结果:");
+        System.out.println("  - 置信度: " + String.format("%.4f", result.confidence));
+        System.out.println("  - 检测任务类型: " + 
+            (result.taskType != null ? result.taskType.getDescription() : "未知"));
+        System.out.println("  - MoE负载均衡损失: " + String.format("%.6f", result.moeLoss));
+        System.out.println("  - 输出形状: " + result.logits.getValue().getShape());
         
-        System.out.println();
+        System.out.println("\n✅ 推理完成");
     }
     
     /**
-     * 创建示例输入数据（token IDs）
+     * 示例4：数学计算任务
      */
-    private static NdArray createSampleInput(int batchSize, int seqLen) {
-        // 创建 token IDs 输入 [batch_size, seq_len]
-        NdArray input = NdArray.of(Shape.of(batchSize, seqLen));
+    public static void example4_MathTask() {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("示例4: 数学计算任务");
+        System.out.println("=".repeat(80));
         
-        // 填充随机token IDs（在实际词汇表范围内）
-        for (int b = 0; b < batchSize; b++) {
-            for (int s = 0; s < seqLen; s++) {
-                int tokenId = (int) (Math.random() * 1000); // 随机token ID
-                input.set(tokenId, b, s);
-            }
-        }
+        // 创建模型
+        DeepSeekV3Model model = DeepSeekV3Model.createTinyModel("DeepSeek-V3-Math");
         
-        return input;
+        // 模拟数学输入（提示词："求解方程 x²-5x+6=0"）
+        float[][] input = {
+            {20, 21, 22, 23, 24, 25, 26, 27}
+        };
+        Variable inputVar = new Variable(NdArray.of(input));
+        
+        // 执行数学计算
+        System.out.println("\n任务类型: 数学计算");
+        System.out.println("输入形状: " + inputVar.getValue().getShape());
+        
+        DeepSeekV3Model.MathResult result = model.solveMath(inputVar);
+        
+        System.out.println("\n数学计算结果:");
+        System.out.println("  - 置信度: " + String.format("%.4f", result.confidence));
+        System.out.println("  - MoE负载均衡损失: " + String.format("%.6f", result.moeLoss));
+        System.out.println("  - 输出形状: " + result.logits.getValue().getShape());
+        
+        System.out.println("\n✅ 数学计算完成");
     }
     
     /**
-     * 显示推理步骤详情
+     * 示例5：MoE分析（专家选择和负载均衡）
      */
-    private static void printReasoningSteps(List<V3ReasoningStep> steps, int maxSteps) {
-        System.out.println("推理步骤详情:");
+    public static void example5_MoEAnalysis() {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("示例5: MoE混合专家分析");
+        System.out.println("=".repeat(80));
         
-        for (int i = 0; i < Math.min(maxSteps, steps.size()); i++) {
-            V3ReasoningStep step = steps.get(i);
-            System.out.printf("  步骤%d [%s]: %s%n", 
-                             i+1, step.getTaskType(), step.getThought());
-            System.out.printf("         置信度: %.3f, 验证: %s%n", 
-                             step.getConfidence(), step.getVerification());
-        }
+        // 创建模型
+        DeepSeekV3Config config = DeepSeekV3Config.createTinyConfig();
+        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-MoE", config);
         
-        if (steps.size() > maxSteps) {
-            System.out.printf("  ... 还有 %d 个步骤%n", steps.size() - maxSteps);
-        }
+        // 打印MoE配置
+        System.out.println("\nMoE配置:");
+        System.out.println("  - 专家数量: " + config.getNumExperts());
+        System.out.println("  - Top-K选择: " + config.getTopK());
+        System.out.println("  - 专家隐藏层维度: " + config.getExpertHiddenDim());
+        System.out.println("  - 负载均衡损失权重: " + config.getLoadBalanceLossWeight());
+        System.out.println("  - 参数激活率: " + String.format("%.2f%%", config.getActivationRatio()));
+        
+        // 演示不同任务类型的专家选择
+        System.out.println("\n任务类型到专家的映射（简化展示）:");
+        System.out.println("  - 推理任务 → 倾向选择专家0和1");
+        System.out.println("  - 代码任务 → 倾向选择专家2和3");
+        System.out.println("  - 数学任务 → 倾向选择专家4和5");
+        System.out.println("  - 通用任务 → 倾向选择专家6和7");
+        
+        // 模拟多任务输入
+        float[][] inputs = {
+            {30, 31, 32, 33}  // 通用任务
+        };
+        Variable inputVar = new Variable(NdArray.of(inputs));
+        
+        DeepSeekV3Block.DetailedForwardResult result = 
+            model.predictWithDetails(inputVar, TaskType.GENERAL);
+        
+        System.out.println("\n执行结果:");
+        System.out.println("  - 检测任务类型: " + result.reasoningResult.taskType.getDescription());
+        System.out.println("  - 平均MoE损失: " + String.format("%.6f", result.avgMoELoss));
+        System.out.println("  - 推理置信度: " + String.format("%.4f", result.reasoningResult.confidence));
+        
+        // 参数效率分析
+        System.out.println("\n参数效率分析:");
+        long totalParams = config.estimateParameterCount();
+        long activeParams = config.estimateActiveParameterCount();
+        System.out.println("  - 总参数量: " + formatParamCount(totalParams));
+        System.out.println("  - 激活参数量: " + formatParamCount(activeParams));
+        System.out.println("  - 节省参数: " + formatParamCount(totalParams - activeParams) +
+                          " (" + String.format("%.1f%%", (1 - config.getActivationRatio() / 100.0) * 100) + ")");
+        
+        System.out.println("\n✅ MoE分析完成");
     }
     
     /**
-     * 运行完整的使用示例
+     * 格式化参数数量
      */
-    public static void runComprehensiveExample() {
-        System.out.println("\n=== 综合使用示例 ===");
-        
-        // 1. 创建模型
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Comprehensive");
-        
-        // 2. 准备不同类型的输入
-        NdArray generalInput = createSampleInput(1, 10);
-        NdArray codingInput = createSampleInput(1, 12);
-        NdArray mathInput = createSampleInput(1, 8);
-        
-        // 3. 执行不同任务
-        System.out.println("执行通用任务...");
-        DeepSeekV3Block.DeepSeekV3Output generalOutput = model.generate(generalInput);
-        
-        System.out.println("执行代码生成任务...");
-        DeepSeekV3Model.CodeGenerationResult codeOutput = model.generateCode(codingInput);
-        
-        System.out.println("执行数学推理任务...");
-        DeepSeekV3Model.MathResult mathOutput = model.solveMath(mathInput);
-        
-        // 4. 比较结果
-        System.out.println("\n任务结果比较:");
-        System.out.printf("通用任务推理质量: %.3f%n", generalOutput.getReasoningQuality());
-        System.out.printf("代码生成置信度: %.3f%n", codeOutput.codeConfidence);
-        System.out.printf("数学推理置信度: %.3f%n", mathOutput.mathConfidence);
-        
-        // 5. 显示模型整体表现
-        DeepSeekV3Model.V3ModelStats finalStats = model.getModelStats();
-        System.out.println("\n模型整体表现: " + finalStats);
-        
-        System.out.println("综合示例完成！");
+    private static String formatParamCount(long count) {
+        if (count >= 1_000_000_000) {
+            return String.format("%.2fB", count / 1_000_000_000.0);
+        } else if (count >= 1_000_000) {
+            return String.format("%.2fM", count / 1_000_000.0);
+        } else if (count >= 1_000) {
+            return String.format("%.2fK", count / 1_000.0);
+        } else {
+            return String.format("%d", count);
+        }
     }
 }

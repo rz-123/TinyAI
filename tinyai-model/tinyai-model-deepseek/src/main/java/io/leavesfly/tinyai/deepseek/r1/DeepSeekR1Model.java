@@ -3,356 +3,300 @@ package io.leavesfly.tinyai.deepseek.r1;
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.Model;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.ndarr.Shape;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
- * DeepSeek R1模型 - 继承自TinyAI的Model类
+ * DeepSeek-R1模型类
  * 
- * 该模型提供完整的DeepSeek R1功能，包括：
- * 1. 标准的模型接口
- * 2. 推理和反思能力
- * 3. 文本生成功能
- * 4. 思维链推理
- * 5. 模型状态管理
+ * DeepSeek-R1是一个具备深度推理和自我反思能力的大语言模型，
+ * 通过多步推理和反思机制实现复杂任务的可解释性处理。
  * 
- * 基于Python实现重新设计，符合TinyAI框架规范
+ * 主要特性：
+ * 1. 多步推理 - 支持最多7步迭代推理过程
+ * 2. 自我反思 - 从5个维度评估推理质量
+ * 3. 置信度评估 - 动态评估每步推理的可信度
+ * 4. Pre-LayerNorm架构 - 提升训练稳定性
+ * 
+ * @author leavesfly
+ * @version 1.0
  */
 public class DeepSeekR1Model extends Model {
     
-    private DeepSeekR1Block deepseekR1Block;
-    
-    // 模型配置参数
-    private int vocabSize;
-    private int dModel;
-    private int numLayers;
-    private int numHeads;
-    private int dFF;
-    private int maxSeqLen;
-    private double dropout;
+    private final DeepSeekR1Config config;
+    private final DeepSeekR1Block r1Block;
     
     /**
-     * 构造DeepSeek R1模型
+     * 构造函数
      * 
      * @param name 模型名称
-     * @param vocabSize 词汇表大小
-     * @param dModel 模型维度
-     * @param numLayers Transformer层数
-     * @param numHeads 注意力头数
-     * @param dFF 前馈网络隐藏维度
-     * @param maxSeqLen 最大序列长度
-     * @param dropout Dropout比率
+     * @param config R1配置对象
      */
-    public DeepSeekR1Model(String name, int vocabSize, int dModel, int numLayers, 
-                          int numHeads, int dFF, int maxSeqLen, double dropout) {
-        super(name, new DeepSeekR1Block(name + "_block", vocabSize, dModel, numLayers, 
-                                       numHeads, dFF, maxSeqLen, dropout));
-        
-        this.deepseekR1Block = (DeepSeekR1Block) getBlock();
-        this.vocabSize = vocabSize;
-        this.dModel = dModel;
-        this.numLayers = numLayers;
-        this.numHeads = numHeads;
-        this.dFF = dFF;
-        this.maxSeqLen = maxSeqLen;
-        this.dropout = dropout;
-        
-        // 设置模型描述信息
-        setDescription("DeepSeek R1 - 具有推理和反思能力的大语言模型");
-        
-        // 更新模型信息
-        updateModelInfo();
+    public DeepSeekR1Model(String name, DeepSeekR1Config config) {
+        super(name, new DeepSeekR1Block(name + "_main", config));
+        this.config = config;
+        this.r1Block = (DeepSeekR1Block) getModule();
+        setDescription(buildDescription());
     }
     
     /**
-     * 使用默认参数的构造函数
-     * 适合快速原型开发和测试
+     * 构建模型描述信息
      */
-    public DeepSeekR1Model(String name, int vocabSize, int dModel) {
-        this(name, vocabSize, dModel, 6, 8, dModel * 4, 512, 0.1);
-    }
-    
-    /**
-     * 五参数构造函数，用于测试
-     */
-    public DeepSeekR1Model(String name, int vocabSize, int dModel, int numLayers, int numHeads) {
-        this(name, vocabSize, dModel, numLayers, numHeads, dModel * 4, 512, 0.1);
-    }
-    
-    /**
-     * 更新模型信息
-     */
-    private void updateModelInfo() {
-        if (getModelInfo() != null) {
-            getModelInfo().setArchitectureType("DeepSeek-R1");
-            getModelInfo().addMetric("vocab_size", vocabSize);
-            getModelInfo().addMetric("d_model", dModel);
-            getModelInfo().addMetric("num_layers", numLayers);
-            getModelInfo().addMetric("num_heads", numHeads);
-            getModelInfo().addMetric("max_seq_len", maxSeqLen);
-        }
-    }
-    
-    /**
-     * 执行推理，返回logits
-     * 
-     * @param inputIds 输入token序列
-     * @return 输出logits
-     */
-    public Variable inference(NdArray inputIds) {
-        Variable inputVar = new Variable(inputIds);
-        return forward(inputVar);
-    }
-    
-    /**
-     * 执行推理，返回logits（带注意力掩码）
-     * 
-     * @param inputIds 输入token序列
-     * @param attentionMask 注意力掩码
-     * @return 输出logits
-     */
-    public Variable inference(NdArray inputIds, NdArray attentionMask) {
-        Variable inputVar = new Variable(inputIds);
-        Variable maskVar = new Variable(attentionMask);
-        return deepseekR1Block.layerForward(inputVar, maskVar);
-    }
-    
-    /**
-     * 执行完整推理，包含推理细节
-     * 
-     * @param inputIds 输入token序列
-     * @param attentionMask 注意力掩码（可为null）
-     * @return 完整的推理结果
-     */
-    public DeepSeekR1Block.DeepSeekR1Result inferenceWithDetails(NdArray inputIds, NdArray attentionMask) {
-        Variable inputVar = new Variable(inputIds);
-        Variable maskVar = attentionMask != null ? new Variable(attentionMask) : null;
-        return deepseekR1Block.forwardWithReasoningDetails(inputVar, maskVar);
-    }
-    
-    /**
-     * 文本生成
-     * 
-     * @param inputTokens 输入token列表
-     * @param maxNewTokens 最大生成token数
-     * @param temperature 采样温度
-     * @param topK top-k采样参数
-     * @return 生成的token序列
-     */
-    public List<Integer> generateText(List<Integer> inputTokens, int maxNewTokens, 
-                                    float temperature, int topK) {
-        return deepseekR1Block.generateSequence(inputTokens, maxNewTokens, temperature, topK);
-    }
-    
-    /**
-     * 文本生成（使用默认参数）
-     * 
-     * @param inputTokens 输入token列表
-     * @param maxNewTokens 最大生成token数
-     * @return 生成的token序列
-     */
-    public List<Integer> generateText(List<Integer> inputTokens, int maxNewTokens) {
-        return generateText(inputTokens, maxNewTokens, 1.0f, 50);
-    }
-    
-    /**
-     * 思维链推理生成
-     * 该方法专门用于展示推理过程
-     * 
-     * @param inputTokens 输入token列表
-     * @param maxSteps 最大推理步骤
-     * @return 思维链推理结果
-     */
-    public ChainOfThoughtResult chainOfThoughtReasoning(List<Integer> inputTokens, int maxSteps) {
-        NdArray inputIds = createInputArray(inputTokens);
-        DeepSeekR1Block.DeepSeekR1Result result = inferenceWithDetails(inputIds, null);
-        
-        // 构建思维链结果
-        List<ReasoningStep> steps = new ArrayList<>();
-        
-        // 从推理模块获取推理步骤（简化版）
-        for (int i = 0; i < Math.min(maxSteps, deepseekR1Block.getReasoningModule().getNumReasoningSteps()); i++) {
-            ReasoningStep step = new ReasoningStep(
-                i + 1,
-                "推理步骤 " + (i + 1) + ": 分析输入并推导结论",
-                "基于前面的分析，采取相应的行动",
-                0.8f // 模拟置信度
-            );
-            steps.add(step);
-        }
-        
-        return new ChainOfThoughtResult(
-            steps,
-            result.getReflectionResult(),
-            generateFinalAnswer(result.getLogits())
+    private String buildDescription() {
+        return String.format(
+            "DeepSeek-R1语言模型 | 参数量: %s | 层数: %d | 维度: %d | 注意力头: %d | " +
+            "推理步骤: %d | 架构: Pre-LayerNorm",
+            formatParamCount(config.estimateParameterCount()),
+            config.getNLayer(),
+            config.getNEmbd(),
+            config.getNHead(),
+            config.getMaxReasoningSteps()
         );
     }
     
     /**
-     * 创建输入数组
+     * 格式化参数数量
      */
-    private NdArray createInputArray(List<Integer> tokens) {
-        int seqLen = Math.min(tokens.size(), maxSeqLen);
-        NdArray inputIds = NdArray.zeros(Shape.of(1, seqLen));
+    private String formatParamCount(long count) {
+        if (count >= 1_000_000_000) {
+            return String.format("%.2fB", count / 1_000_000_000.0);
+        } else if (count >= 1_000_000) {
+            return String.format("%.2fM", count / 1_000_000.0);
+        } else {
+            return String.format("%,d", count);
+        }
+    }
+    
+    // ==================== 工厂方法 ====================
+    
+    /**
+     * 创建标准DeepSeek-R1模型
+     */
+    public static DeepSeekR1Model createStandardModel(String name) {
+        return new DeepSeekR1Model(name, DeepSeekR1Config.createStandardConfig());
+    }
+    
+    /**
+     * 创建微型DeepSeek-R1模型（用于快速测试）
+     */
+    public static DeepSeekR1Model createTinyModel(String name) {
+        return new DeepSeekR1Model(name, DeepSeekR1Config.createTinyConfig());
+    }
+    
+    /**
+     * 创建小型DeepSeek-R1模型（用于学习和实验）
+     */
+    public static DeepSeekR1Model createSmallModel(String name) {
+        return new DeepSeekR1Model(name, DeepSeekR1Config.createSmallConfig());
+    }
+    
+    // ==================== 推理方法 ====================
+    
+    /**
+     * 标准预测方法
+     * 
+     * @param tokenIds token ID序列 [batch_size, seq_len]
+     * @return logits输出 [batch_size, seq_len, vocab_size]
+     */
+    public Variable predict(Variable tokenIds) {
+        return forward(tokenIds);
+    }
+    
+    /**
+     * 带详细信息的推理
+     * 
+     * @param tokenIds token ID序列 [batch_size, seq_len]
+     * @return 详细推理结果，包含推理步骤和反思评估
+     */
+    public DeepSeekR1Block.DetailedForwardResult predictWithDetails(Variable tokenIds) {
+        return r1Block.forwardWithDetails(tokenIds);
+    }
+    
+    /**
+     * 执行多步推理（获取推理结果）
+     * 
+     * @param tokenIds token ID序列 [batch_size, seq_len]
+     * @return 推理结果对象
+     */
+    public ReasoningOutput performReasoning(Variable tokenIds) {
+        DeepSeekR1Block.DetailedForwardResult result = r1Block.forwardWithDetails(tokenIds);
+        return new ReasoningOutput(
+            result.logits,
+            result.reasoningResult.numSteps,
+            result.reasoningResult.averageConfidence,
+            result.reflectionResult.qualityScore
+        );
+    }
+    
+    /**
+     * 生成序列（贪婪解码）
+     * 
+     * @param promptIds 提示词token ID序列 [batch_size, prompt_len]
+     * @param maxNewTokens 最大生成token数量
+     * @return 生成的完整序列 [batch_size, prompt_len + maxNewTokens]
+     */
+    public NdArray generateSequence(NdArray promptIds, int maxNewTokens) {
+        int batchSize = promptIds.getShape().getDimension(0);
+        int promptLen = promptIds.getShape().getDimension(1);
         
-        for (int i = 0; i < seqLen; i++) {
-            inputIds.set(tokens.get(i), 0, i);
+        float[][] generatedSeq = new float[batchSize][promptLen + maxNewTokens];
+        
+        // 复制提示词
+        for (int b = 0; b < batchSize; b++) {
+            for (int t = 0; t < promptLen; t++) {
+                generatedSeq[b][t] = promptIds.get(b, t);
+            }
         }
         
-        return inputIds;
+        // 自回归生成
+        for (int i = 0; i < maxNewTokens; i++) {
+            int currentLen = promptLen + i;
+            float[][] currentInput = new float[batchSize][currentLen];
+            for (int b = 0; b < batchSize; b++) {
+                System.arraycopy(generatedSeq[b], 0, currentInput[b], 0, currentLen);
+            }
+            
+            // 预测下一个token
+            Variable logits = predict(new Variable(NdArray.of(currentInput)));
+            NdArray logitsArray = logits.getValue();
+            
+            // 贪婪选择（选择概率最大的token）
+            for (int b = 0; b < batchSize; b++) {
+                int nextToken = argmax(logitsArray, b, currentLen - 1);
+                generatedSeq[b][currentLen] = nextToken;
+            }
+        }
+        
+        return NdArray.of(generatedSeq);
     }
     
     /**
-     * 根据logits生成最终答案（简化版）
+     * 查找最大值的索引（argmax）
      */
-    private String generateFinalAnswer(Variable logits) {
-        // 这里应该有一个完整的解码过程
-        // 简化实现：返回模拟答案
-        return "基于推理分析，得出的最终结论。";
+    private int argmax(NdArray logits, int batchIdx, int seqIdx) {
+        int vocabSize = logits.getShape().getDimension(2);
+        int maxIdx = 0;
+        float maxVal = logits.get(batchIdx, seqIdx, 0);
+        
+        for (int i = 1; i < vocabSize; i++) {
+            float val = logits.get(batchIdx, seqIdx, i);
+            if (val > maxVal) {
+                maxVal = val;
+                maxIdx = i;
+            }
+        }
+        return maxIdx;
     }
     
-    /**
-     * 获取模型状态统计
-     * 
-     * @return 模型统计信息
-     */
-    public Map<String, Object> getModelStatistics() {
-        return deepseekR1Block.getModelStatistics();
-    }
+    // ==================== 模型信息 ====================
     
     /**
      * 打印模型详细信息
      */
-    public void printModelDetails() {
-        System.out.println("=== DeepSeek R1 模型详情 ===");
+    @Override
+    public void printModelInfo() {
+        System.out.println("=".repeat(80));
+        System.out.println("DeepSeek-R1 模型详细信息");
+        System.out.println("=".repeat(80));
         System.out.println("模型名称: " + getName());
-        System.out.println("架构类型: DeepSeek-R1");
-        System.out.println("词汇表大小: " + vocabSize);
-        System.out.println("模型维度: " + dModel);
-        System.out.println("Transformer层数: " + numLayers);
-        System.out.println("注意力头数: " + numHeads);
-        System.out.println("前馈网络维度: " + dFF);
-        System.out.println("最大序列长度: " + maxSeqLen);
-        System.out.println("Dropout比率: " + dropout);
-        
-        Map<String, Object> stats = getModelStatistics();
-        System.out.println("总参数数量: " + stats.get("total_parameters"));
-        System.out.println("推理步骤数: " + stats.get("reasoning_steps"));
-        System.out.println("反思质量阈值: " + stats.get("reflection_threshold"));
-        System.out.println("================================");
+        System.out.println("模型描述: " + buildDescription());
+        System.out.println("-".repeat(80));
+        System.out.println(config);
+        System.out.println("-".repeat(80));
+        if (r1Block != null) {
+            r1Block.printArchitecture();
+        }
+        System.out.println("=".repeat(80));
     }
     
     /**
-     * 检查模型配置的有效性
-     * 
-     * @return 配置是否有效
+     * 获取配置摘要
      */
-    public boolean validateConfiguration() {
-        if (vocabSize <= 0) {
-            System.err.println("错误: 词汇表大小必须大于0");
-            return false;
-        }
-        
-        if (dModel <= 0 || dModel % numHeads != 0) {
-            System.err.println("错误: 模型维度必须大于0且能被注意力头数整除");
-            return false;
-        }
-        
-        if (numLayers <= 0) {
-            System.err.println("错误: Transformer层数必须大于0");
-            return false;
-        }
-        
-        if (numHeads <= 0) {
-            System.err.println("错误: 注意力头数必须大于0");
-            return false;
-        }
-        
-        if (maxSeqLen <= 0) {
-            System.err.println("错误: 最大序列长度必须大于0");
-            return false;
-        }
-        
-        return true;
+    public String getConfigSummary() {
+        return String.format(
+            "DeepSeek-R1配置摘要:\n" +
+            "  - 词汇表大小: %,d\n" +
+            "  - 嵌入维度: %d\n" +
+            "  - Transformer层数: %d\n" +
+            "  - 注意力头数: %d\n" +
+            "  - 前馈网络维度: %d\n" +
+            "  - 最大序列长度: %d\n" +
+            "  - 最大推理步骤: %d\n" +
+            "  - 推理隐藏维度: %d\n" +
+            "  - 反思隐藏维度: %d\n" +
+            "  - 质量评分维度: %d\n" +
+            "  - 置信度阈值: %.2f\n" +
+            "  - 架构: Pre-LayerNorm\n" +
+            "  - 估算参数量: %s",
+            config.getVocabSize(),
+            config.getNEmbd(),
+            config.getNLayer(),
+            config.getNHead(),
+            config.getNInner(),
+            config.getNPositions(),
+            config.getMaxReasoningSteps(),
+            config.getReasoningHiddenDim(),
+            config.getReflectionHiddenDim(),
+            config.getQualityScoreDim(),
+            config.getConfidenceThreshold(),
+            formatParamCount(config.estimateParameterCount())
+        );
     }
     
+    // ==================== Getter方法 ====================
+    
+    public DeepSeekR1Config getConfig() {
+        return config;
+    }
+    
+    public DeepSeekR1Block getR1Block() {
+        return r1Block;
+    }
+    
+    @Override
+    public String toString() {
+        return String.format(
+            "DeepSeekR1Model{name='%s', params=%s, nLayer=%d, nEmbd=%d, reasoningSteps=%d}",
+            getName(), 
+            formatParamCount(config.estimateParameterCount()), 
+            config.getNLayer(), 
+            config.getNEmbd(),
+            config.getMaxReasoningSteps()
+        );
+    }
+    
+    // ==================== 内部类 ====================
+    
     /**
-     * 推理步骤类
+     * 推理输出结果类
      */
-    public static class ReasoningStep {
-        private int stepNumber;
-        private String thought;
-        private String action;
-        private float confidence;
+    public static class ReasoningOutput {
+        /** 最终logits输出 */
+        public final Variable logits;
+        /** 推理步骤数 */
+        public final int numSteps;
+        /** 平均置信度 */
+        public final double averageConfidence;
+        /** 质量评分 */
+        public final DeepSeekR1ReflectionBlock.QualityScore qualityScore;
         
-        public ReasoningStep(int stepNumber, String thought, String action, float confidence) {
-            this.stepNumber = stepNumber;
-            this.thought = thought;
-            this.action = action;
-            this.confidence = confidence;
+        public ReasoningOutput(Variable logits, int numSteps, 
+                              double averageConfidence,
+                              DeepSeekR1ReflectionBlock.QualityScore qualityScore) {
+            this.logits = logits;
+            this.numSteps = numSteps;
+            this.averageConfidence = averageConfidence;
+            this.qualityScore = qualityScore;
         }
-        
-        // Getters
-        public int getStepNumber() { return stepNumber; }
-        public String getThought() { return thought; }
-        public String getAction() { return action; }
-        public float getConfidence() { return confidence; }
         
         @Override
         public String toString() {
-            return String.format("步骤%d: %s -> %s (置信度: %.2f)", 
-                               stepNumber, thought, action, confidence);
+            return String.format(
+                "ReasoningOutput{\n" +
+                "  推理步骤数: %d\n" +
+                "  平均置信度: %.4f\n" +
+                "  %s\n" +
+                "}",
+                numSteps, averageConfidence, qualityScore
+            );
         }
     }
-    
-    /**
-     * 思维链推理结果类
-     */
-    public static class ChainOfThoughtResult {
-        private List<ReasoningStep> reasoningSteps;
-        private ReflectionBlock.ReflectionResult reflectionResult;
-        private String finalAnswer;
-        
-        public ChainOfThoughtResult(List<ReasoningStep> reasoningSteps, 
-                                  ReflectionBlock.ReflectionResult reflectionResult,
-                                  String finalAnswer) {
-            this.reasoningSteps = reasoningSteps;
-            this.reflectionResult = reflectionResult;
-            this.finalAnswer = finalAnswer;
-        }
-        
-        // Getters
-        public List<ReasoningStep> getReasoningSteps() { return reasoningSteps; }
-        public ReflectionBlock.ReflectionResult getReflectionResult() { return reflectionResult; }
-        public String getFinalAnswer() { return finalAnswer; }
-        
-        /**
-         * 打印完整的思维链过程
-         */
-        public void printChainOfThought() {
-            System.out.println("=== 思维链推理过程 ===");
-            for (ReasoningStep step : reasoningSteps) {
-                System.out.println(step);
-            }
-            System.out.println("\n=== 反思结果 ===");
-            System.out.println(reflectionResult);
-            System.out.println("\n=== 最终答案 ===");
-            System.out.println(finalAnswer);
-            System.out.println("=====================");
-        }
-    }
-    
-    // Getters
-    public DeepSeekR1Block getDeepSeekR1Block() { return deepseekR1Block; }
-    public int getVocabSize() { return vocabSize; }
-    public int getDModel() { return dModel; }
-    public int getNumLayers() { return numLayers; }
-    public int getNumHeads() { return numHeads; }
-    public int getDFF() { return dFF; }
-    public int getMaxSeqLen() { return maxSeqLen; }
-    public double getDropoutRate() { return dropout; }
 }

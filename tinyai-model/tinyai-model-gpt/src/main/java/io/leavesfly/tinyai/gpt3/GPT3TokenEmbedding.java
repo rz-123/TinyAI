@@ -88,7 +88,7 @@ public class GPT3TokenEmbedding extends Module {
         }
         
         // 1. 获取Token嵌入
-        Variable tokenEmbeds = getTokenEmbeddings(tokenData, batchSize, sequenceLength);
+        Variable tokenEmbeds = getTokenEmbeddings(tokenIds, batchSize, sequenceLength);
         
         // 2. 获取位置嵌入
         Variable positionEmbeds = getPositionEmbeddings(sequenceLength, batchSize);
@@ -103,63 +103,65 @@ public class GPT3TokenEmbedding extends Module {
     }
     
     /**
-     * 获取Token嵌入
+     * 获取Token嵌入（使用Variable算子）
      * 
-     * @param tokenIds Token ID数组
+     * @param tokenIds Token ID变量
      * @param batchSize 批次大小
      * @param sequenceLength 序列长度
      * @return Token嵌入变量
      */
-    private Variable getTokenEmbeddings(NdArray tokenIds, int batchSize, int sequenceLength) {
-        NdArray embeddings = NdArray.of(Shape.of(batchSize, sequenceLength, embeddingDim));
-        NdArray tokenEmbedData = tokenEmbedding.data();
+    private Variable getTokenEmbeddings(Variable tokenIds, int batchSize, int sequenceLength) {
+        // 使用IndexSelect算子实现embedding lookup
+        // tokenEmbedding: (vocabSize, embeddingDim)
+        // tokenIds: (batchSize, sequenceLength)
+        // 需要将tokenIds flatten为1D，然后使用indexSelect，最后reshape回(batchSize, sequenceLength, embeddingDim)
         
-        // 对每个token ID查找对应的嵌入向量
-        for (int b = 0; b < batchSize; b++) {
-            for (int s = 0; s < sequenceLength; s++) {
-                int tokenId = (int) tokenIds.get(b, s);
-                
-                // 验证token ID的有效性
-                if (tokenId < 0 || tokenId >= vocabSize) {
-                    throw new IllegalArgumentException(
-                        String.format("Token ID %d out of vocabulary range [0, %d)", tokenId, vocabSize)
-                    );
-                }
-                
-                // 复制对应的嵌入向量
-                for (int d = 0; d < embeddingDim; d++) {
-                    float embeddingValue = tokenEmbedData.get(tokenId, d);
-                    embeddings.set(embeddingValue, b, s, d);
-                }
-            }
-        }
+        Variable tokenEmbedVar = new Variable(tokenEmbedding.data());
+        tokenEmbedVar.setRequireGrad(false);
         
-        return new Variable(embeddings);
+        // Flatten tokenIds: (batchSize, sequenceLength) -> (batchSize * sequenceLength)
+        Variable flatTokenIds = tokenIds.reshape(Shape.of(batchSize * sequenceLength));
+        
+        // IndexSelect: 从(vocabSize, embeddingDim)中选择，得到(batchSize * sequenceLength, embeddingDim)
+        Variable flatEmbeddings = tokenEmbedVar.indexSelect(0, flatTokenIds);
+        
+        // Reshape回原始形状: (batchSize, sequenceLength, embeddingDim)
+        Variable embeddings = flatEmbeddings.reshape(Shape.of(batchSize, sequenceLength, embeddingDim));
+        
+        return embeddings;
     }
     
     /**
-     * 获取位置嵌入
+     * 获取位置嵌入（使用Variable算子）
      * 
      * @param sequenceLength 序列长度
      * @param batchSize 批次大小
      * @return 位置嵌入变量
      */
     private Variable getPositionEmbeddings(int sequenceLength, int batchSize) {
-        NdArray posEmbeds = NdArray.of(Shape.of(batchSize, sequenceLength, embeddingDim));
-        NdArray positionEmbedData = positionEmbedding.data();
+        // 使用IndexSelect算子实现position embedding lookup
+        // positionEmbedding: (maxPositions, embeddingDim)
+        // 需要选择前sequenceLength个位置，然后扩展到batchSize
         
-        // 为每个位置添加位置嵌入
-        for (int b = 0; b < batchSize; b++) {
-            for (int s = 0; s < sequenceLength; s++) {
-                // 复制对应位置的嵌入向量
-                for (int d = 0; d < embeddingDim; d++) {
-                    float positionValue = positionEmbedData.get(s, d);
-                    posEmbeds.set(positionValue, b, s, d);
-                }
-            }
+        Variable positionEmbedVar = new Variable(positionEmbedding.data());
+        positionEmbedVar.setRequireGrad(false);
+        
+        // 创建位置索引: [0, 1, 2, ..., sequenceLength-1]
+        float[] posIndices = new float[sequenceLength];
+        for (int i = 0; i < sequenceLength; i++) {
+            posIndices[i] = i;
         }
+        Variable posIndexVar = new Variable(NdArray.of(posIndices));
+        posIndexVar.setRequireGrad(false);
         
-        return new Variable(posEmbeds);
+        // IndexSelect: 从(maxPositions, embeddingDim)中选择，得到(sequenceLength, embeddingDim)
+        Variable posEmbeds = positionEmbedVar.indexSelect(0, posIndexVar);
+        
+        // 扩展到batch维度: (sequenceLength, embeddingDim) -> (1, sequenceLength, embeddingDim) -> (batchSize, sequenceLength, embeddingDim)
+        posEmbeds = posEmbeds.reshape(Shape.of(1, sequenceLength, embeddingDim));
+        posEmbeds = posEmbeds.broadcastTo(Shape.of(batchSize, sequenceLength, embeddingDim));
+        
+        return posEmbeds;
     }
     
     // ==================== Getter方法 ====================

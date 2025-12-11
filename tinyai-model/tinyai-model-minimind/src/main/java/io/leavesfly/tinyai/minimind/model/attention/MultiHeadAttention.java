@@ -156,24 +156,48 @@ public class MultiHeadAttention extends Module {
         K = rope.forward(K, new Variable(NdArray.of(new float[]{startPos})));
 
         // 3. 多头分割：[batch, seqLen, hiddenSize] -> [batch, numHeads, seqLen, headDim]
-        NdArray qSplit = reshapeMultiHead(Q.getValue(), batchSize, seqLen);
-        NdArray kSplit = reshapeMultiHead(K.getValue(), batchSize, seqLen);
-        NdArray vSplit = reshapeMultiHead(V.getValue(), batchSize, seqLen);
+        // 由于 reshape 操作较复杂，这里使用 NdArray 底层操作，但保持在 Variable 层面
+        Variable qSplit = new Variable(reshapeMultiHead(Q.getValue(), batchSize, seqLen));
+        Variable kSplit = new Variable(reshapeMultiHead(K.getValue(), batchSize, seqLen));
+        Variable vSplit = new Variable(reshapeMultiHead(V.getValue(), batchSize, seqLen));
 
         // 4. KV-Cache 处理
         if (kvCache != null) {
-            NdArray[] updated = kvCache.update(kSplit, vSplit);
-            kSplit = updated[0];
-            vSplit = updated[1];
+            NdArray[] updated = kvCache.update(kSplit.getValue(), vSplit.getValue());
+            kSplit = new Variable(updated[0]);
+            vSplit = new Variable(updated[1]);
         }
 
         int kvSeqLen = kSplit.getShape().getShapeDims()[2];
 
+        // 5-9. 注意力计算：使用 Variable 层面操作
+        Variable attnOutput = computeAttentionVar(qSplit, kSplit, vSplit, 
+                                                   batchSize, seqLen, kvSeqLen, startPos, 
+                                                   kvCache == null);
+
+        // 10. 多头合并：[batch, numHeads, seqLen, headDim] -> [batch, seqLen, hiddenSize]
+        Variable merged = new Variable(mergeMultiHead(attnOutput.getValue(), batchSize, seqLen));
+
+        // 11. 输出投影
+        Variable output = outputProj.forward(merged);
+
+        return output;
+    }
+
+    /**
+     * 使用 Variable 层面操作计算注意力
+     */
+    private Variable computeAttentionVar(Variable Q, Variable K, Variable V,
+                                         int batchSize, int seqLen, int kvSeqLen, int startPos,
+                                         boolean applyMask) {
+        // 注意：由于多头注意力的计算涉及复杂的维度操作，这里保留 NdArray 底层实现
+        // TODO: 未来可以实现完整的 Variable 层面多头注意力算子
+        
         // 5. 计算注意力分数：scores = (Q @ K^T) / sqrt(headDim)
-        NdArray scores = computeAttentionScores(qSplit, kSplit, batchSize, seqLen, kvSeqLen);
+        NdArray scores = computeAttentionScores(Q.getValue(), K.getValue(), batchSize, seqLen, kvSeqLen);
 
         // 6. 应用因果掩码
-        if (training || kvCache == null) {
+        if (training || applyMask) {
             scores = applyCausalMask(scores, batchSize, seqLen, kvSeqLen, startPos);
         }
 
@@ -186,15 +210,9 @@ public class MultiHeadAttention extends Module {
         }
 
         // 9. 应用注意力权重：output = attnWeights @ V
-        NdArray attended = applyAttentionWeights(attnWeights, vSplit, batchSize, seqLen);
-
-        // 10. 多头合并：[batch, numHeads, seqLen, headDim] -> [batch, seqLen, hiddenSize]
-        NdArray merged = mergeMultiHead(attended, batchSize, seqLen);
-
-        // 11. 输出投影
-        Variable output = outputProj.forward(new Variable(merged));
-
-        return output;
+        NdArray attended = applyAttentionWeights(attnWeights, V.getValue(), batchSize, seqLen);
+        
+        return new Variable(attended);
     }
 
     /**

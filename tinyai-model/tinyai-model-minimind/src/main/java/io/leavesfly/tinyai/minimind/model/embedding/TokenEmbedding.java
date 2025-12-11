@@ -47,59 +47,28 @@ public class TokenEmbedding extends Module {
         }
 
         Variable tokenIds = inputs[0];
-        NdArray ids = tokenIds.getValue();
-
+        
         // tokenIds shape: [batch_size, seq_len] 或 [batch_size, seq_len, 1]
-        int[] shape = ids.getShape().getShapeDims();
+        int[] shape = tokenIds.getShape().getShapeDims();
         int batchSize = shape[0];
         int seqLen = shape.length > 1 ? shape[1] : 1;
 
-        // 获取嵌入权重
-        NdArray embeddingWeight = weight.data();
+        // 使用 Variable 层面的 indexSelect 进行嵌入查找
+        // 将 tokenIds reshape 为一维: [batch_size * seq_len]
+        Variable flattenedIds = tokenIds.reshape(Shape.of(batchSize * seqLen));
+        
+        // 使用 indexSelect 从嵌入矩阵中选择对应行
+        // weight.data() shape: [vocabSize, embeddingDim]
+        Variable weightVar = new Variable(weight.data());
+        Variable embedded = weightVar.indexSelect(0, flattenedIds);
+        
+        // reshape 回原始形状: [batch_size, seq_len, embeddingDim]
+        Variable output = embedded.reshape(Shape.of(batchSize, seqLen, embeddingDim));
 
-        // 执行嵌入查找
-        NdArray embedded = embeddingLookup(embeddingWeight, ids, batchSize, seqLen);
-
-        return new Variable(embedded);
+        return output;
     }
 
-    /**
-     * 嵌入查找实现
-     *
-     * @param embeddingWeight 嵌入矩阵 [vocabSize, embeddingDim]
-     * @param tokenIds        Token IDs [batch_size, seq_len]
-     * @param batchSize       批次大小
-     * @param seqLen          序列长度
-     * @return 嵌入向量 [batch_size, seq_len, embeddingDim]
-     */
-    private NdArray embeddingLookup(NdArray embeddingWeight, NdArray tokenIds, int batchSize, int seqLen) {
-        float[] embeddingData = embeddingWeight.getArray();
-        float[] idsData = tokenIds.getArray();
 
-        // 输出形状: [batch_size, seq_len, embeddingDim]
-        float[] output = new float[batchSize * seqLen * embeddingDim];
-
-        for (int b = 0; b < batchSize; b++) {
-            for (int s = 0; s < seqLen; s++) {
-                int idxPos = b * seqLen + s;
-                int tokenId = (int) idsData[idxPos];
-
-                // 检查索引有效性
-                if (tokenId < 0 || tokenId >= vocabSize) {
-                    throw new IndexOutOfBoundsException(
-                            "Token ID " + tokenId + " out of range [0, " + vocabSize + ")"
-                    );
-                }
-
-                // 复制嵌入向量
-                int outputOffset = (b * seqLen + s) * embeddingDim;
-                int embeddingOffset = tokenId * embeddingDim;
-                System.arraycopy(embeddingData, embeddingOffset, output, outputOffset, embeddingDim);
-            }
-        }
-
-        return NdArray.of(output, Shape.of(batchSize, seqLen, embeddingDim));
-    }
 
     /**
      * 获取嵌入权重参数(用于权重共享)

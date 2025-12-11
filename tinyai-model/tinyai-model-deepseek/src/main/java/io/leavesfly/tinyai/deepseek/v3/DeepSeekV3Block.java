@@ -2,514 +2,300 @@ package io.leavesfly.tinyai.deepseek.v3;
 
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
-import io.leavesfly.tinyai.nnet.v1.layer.dnn.LinearLayer;
-import io.leavesfly.tinyai.nnet.v1.layer.norm.LayerNorm;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.norm.LayerNorm;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * DeepSeek V3主模型Block
+ * DeepSeek-V3主体块(DeepSeekV3Block)
  * 
- * 集成了DeepSeek V3的所有核心组件，包括：
- * 1. Token和位置嵌入层
- * 2. 多层V3 Transformer块（带MoE）
- * 3. V3增强推理模块
- * 4. 代码生成专门模块
- * 5. 多任务输出头
- * 6. 层归一化和Dropout
+ * 整合所有DeepSeek-V3组件，构建完整的模型架构：
+ * 1. Token嵌入层 - 将token ID转换为向量表示
+ * 2. Transformer层堆叠（集成MoE） - 进行序列建模
+ * 3. 推理模块 - 执行任务感知推理
+ * 4. 代码生成模块 - 代码专门优化
+ * 5. 输出投影层 - 生成最终logits
+ * 
+ * 数据流：
+ * token_ids → embedding → transformer_layers(MoE) → reasoning → code_analysis → output
  * 
  * @author leavesfly
  * @version 1.0
  */
-public class DeepSeekV3Block extends Block {
+public class DeepSeekV3Block extends Module {
     
-    // 模型配置参数
-    private final int vocabSize;
-    private final int dModel;
-    private final int numLayers;
-    private final int numHeads;
-    private final int dFF;
-    private final int numExperts;
-    private final int maxSeqLen;
-    private final float dropout;
+    private final DeepSeekV3Config config;
     
-    // 嵌入层
-    private ParameterV1 tokenEmbedding;
-    private ParameterV1 positionEmbedding;
-    
-    // V3 Transformer层
-    private List<V3TransformerBlock> transformerLayers;
-    
-    // V3增强推理模块
-    private V3ReasoningBlock reasoningModule;
-    
-    // 代码生成专门模块
-    private CodeGenerationBlock codeGeneration;
-    
-    // 最终层归一化
-    private LayerNorm finalNorm;
-    
-    // 多任务输出头
-    private Map<TaskType, LinearLayer> outputHeads;
-    
-    // 最后一次前向传播的状态
-    private DeepSeekV3Output lastOutput;
+    // 核心组件
+    private DeepSeekV3TokenEmbedding tokenEmbedding;
+    private List<DeepSeekV3TransformerBlock> transformerBlocks;
+    private DeepSeekV3ReasoningBlock reasoningBlock;
+    private DeepSeekV3CodeBlock codeBlock;
+    private LayerNorm finalLayerNorm;
+    private Linear outputProjection;
     
     /**
      * 构造函数
      * 
-     * @param name 模型名称
-     * @param vocabSize 词汇表大小
-     * @param dModel 模型维度
-     * @param numLayers Transformer层数
-     * @param numHeads 注意力头数
-     * @param dFF 前馈网络维度
-     * @param numExperts 专家数量
-     * @param maxSeqLen 最大序列长度
-     * @param dropout Dropout概率
+     * @param name 模块名称
+     * @param config V3配置对象
      */
-    public DeepSeekV3Block(String name, int vocabSize, int dModel, int numLayers, 
-                          int numHeads, int dFF, int numExperts, int maxSeqLen, float dropout) {
+    public DeepSeekV3Block(String name, DeepSeekV3Config config) {
         super(name);
+        this.config = config;
+        initializeComponents();
+    }
+    
+    /**
+     * 初始化所有组件
+     */
+    private void initializeComponents() {
+        // 1. 初始化Token嵌入层
+        tokenEmbedding = new DeepSeekV3TokenEmbedding(name + "_token_embedding", config);
+        registerModule("token_embedding", tokenEmbedding);
         
-        this.vocabSize = vocabSize;
-        this.dModel = dModel;
-        this.numLayers = numLayers;
-        this.numHeads = numHeads;
-        this.dFF = dFF;
-        this.numExperts = numExperts;
-        this.maxSeqLen = maxSeqLen;
-        this.dropout = dropout;
-        
-        init();
-    }
-    
-    /**
-     * 默认构造函数 - 使用标准配置
-     */
-    public DeepSeekV3Block(String name, int vocabSize, int dModel) {
-        this(name, vocabSize, dModel, 12, 12, dModel * 4, 8, 8192, 0.1f);
-    }
-    
-    @Override
-    public void init() {
-        if (!alreadyInit) {
-            initEmbeddings();
-            initTransformerLayers();
-            initReasoningModule();
-            initCodeGenerationModule();
-            initOutputHeads();
-            initFinalNormalization();
-            
-            alreadyInit = true;
-        }
-    }
-    
-    /**
-     * 初始化嵌入层
-     */
-    private void initEmbeddings() {
-        // Token嵌入 - 使用Xavier初始化
-        NdArray tokenEmbeddingData = NdArray.likeRandomN(Shape.of(vocabSize, dModel))
-                                          .mulNum(Math.sqrt(1.0 / dModel));
-        tokenEmbedding = new ParameterV1(tokenEmbeddingData);
-        tokenEmbedding.setName(name + "_token_embedding");
-        addParam(tokenEmbedding.getName(), tokenEmbedding);
-        
-        // 位置嵌入
-        NdArray positionEmbeddingData = NdArray.likeRandomN(Shape.of(maxSeqLen, dModel))
-                                             .mulNum(Math.sqrt(1.0 / dModel));
-        positionEmbedding = new ParameterV1(positionEmbeddingData);
-        positionEmbedding.setName(name + "_position_embedding");
-        addParam(positionEmbedding.getName(), positionEmbedding);
-    }
-    
-    /**
-     * 初始化Transformer层
-     */
-    private void initTransformerLayers() {
-        transformerLayers = new ArrayList<>();
-        
-        for (int i = 0; i < numLayers; i++) {
-            V3TransformerBlock layer = new V3TransformerBlock(
-                name + "_transformer_" + i, 
-                dModel, numHeads, dFF, numExperts, dropout
-            );
-            transformerLayers.add(layer);
-            addLayer(layer);
-        }
-    }
-    
-    /**
-     * 初始化推理模块
-     */
-    private void initReasoningModule() {
-        reasoningModule = new V3ReasoningBlock(name + "_reasoning", dModel, 7);
-        addLayer(reasoningModule);
-    }
-    
-    /**
-     * 初始化代码生成模块
-     */
-    private void initCodeGenerationModule() {
-        codeGeneration = new CodeGenerationBlock(name + "_code_gen", dModel, 10);
-        addLayer(codeGeneration);
-    }
-    
-    /**
-     * 初始化多任务输出头
-     */
-    private void initOutputHeads() {
-        outputHeads = new HashMap<>();
-        
-        for (TaskType taskType : TaskType.values()) {
-            LinearLayer outputHead = new LinearLayer(
-                name + "_output_" + taskType.getValue(), 
-                dModel, vocabSize, false
-            );
-            outputHeads.put(taskType, outputHead);
-            addLayer(outputHead);
-        }
-    }
-    
-    /**
-     * 初始化最终层归一化
-     */
-    private void initFinalNormalization() {
-        finalNorm = new LayerNorm(name + "_final_norm", dModel);
-        addLayer(finalNorm);
-    }
-    
-    @Override
-    public Variable layerForward(Variable... inputs) {
-        Variable inputIds = inputs[0];
-        TaskType taskType = TaskType.GENERAL; // 默认任务类型
-        NdArray attentionMask = null;
-        
-        // 解析额外参数
-        if (inputs.length > 1) {
-            // 可以扩展参数传递机制
+        // 2. 初始化Transformer层堆叠（带MoE）
+        transformerBlocks = new ArrayList<>();
+        for (int i = 0; i < config.getNLayer(); i++) {
+            DeepSeekV3TransformerBlock block = new DeepSeekV3TransformerBlock(
+                name + "_transformer_" + i, config);
+            transformerBlocks.add(block);
+            registerModule("transformer_" + i, block);
         }
         
-        // 执行V3前向传播
-        DeepSeekV3Output output = forwardWithTaskType(inputIds, attentionMask, taskType);
-        lastOutput = output;
+        // 3. 初始化推理模块
+        reasoningBlock = new DeepSeekV3ReasoningBlock(name + "_reasoning", config);
+        registerModule("reasoning", reasoningBlock);
         
-        return output.logits;
+        // 4. 初始化代码生成模块
+        codeBlock = new DeepSeekV3CodeBlock(name + "_code", config);
+        registerModule("code", codeBlock);
+        
+        // 5. 初始化最终LayerNorm
+        finalLayerNorm = new LayerNorm(
+            name + "_final_ln",
+            config.getNEmbd(),
+            (float) config.getLayerNormEpsilon()
+        );
+        registerModule("final_ln", finalLayerNorm);
+        
+        // 6. 初始化输出投影层
+        outputProjection = new Linear(
+            name + "_output_proj",
+            config.getNEmbd(),
+            config.getVocabSize(),
+            false  // 通常不使用偏置
+        );
+        registerModule("output_proj", outputProjection);
     }
     
     /**
-     * 执行带任务类型的V3前向传播
+     * 前向传播
      * 
-     * @param inputIds 输入token IDs
-     * @param attentionMask 注意力掩码（可为null）
-     * @param taskType 任务类型
-     * @return V3模型输出
+     * @param inputs inputs[0]为token ID序列 [batch_size, seq_len]
+     * @return logits输出 [batch_size, seq_len, vocab_size]
      */
-    public DeepSeekV3Output forwardWithTaskType(Variable inputIds, NdArray attentionMask, TaskType taskType) {
-        NdArray inputData = inputIds.getValue();
-        int batchSize = inputData.getShape().getDimension(0);
-        int seqLen = inputData.getShape().getDimension(1);
-        
-        // 嵌入处理
-        Variable embeddings = processEmbeddings(inputData, batchSize, seqLen);
-        
-        // 通过V3 Transformer层
-        TransformerResult transformerResult = processTransformerLayers(embeddings, attentionMask, taskType);
-        
-        // V3推理模块
-        V3ReasoningBlock.ReasoningResult reasoningResult = reasoningModule.performV3Reasoning(transformerResult.output);
-        
-        // 代码生成分析（如果是代码任务）
-        CodeGenerationBlock.CodeGenerationResult codeResult = null;
-        if (taskType == TaskType.CODING) {
-            codeResult = codeGeneration.performCodeGenerationAnalysis(reasoningResult.finalOutput);
+    @Override
+    public Variable forward(Variable... inputs) {
+        if (inputs == null || inputs.length == 0) {
+            throw new IllegalArgumentException("输入不能为空");
         }
         
-        // 最终层归一化
-        Variable normalizedOutput = finalNorm.layerForward(reasoningResult.finalOutput);
+        Variable tokenIds = inputs[0];
+        validateInput(tokenIds);
         
-        // 选择输出头
-        LinearLayer outputHead = outputHeads.getOrDefault(taskType, outputHeads.get(TaskType.GENERAL));
-        Variable finalLogits = outputHead.layerForward(normalizedOutput);
+        // 1. Token嵌入
+        Variable x = tokenEmbedding.forward(tokenIds);
         
-        // 计算总的MoE损失
-        float totalMoELoss = transformerResult.allRoutingInfo.stream()
-                                                           .map(ExpertRoutingInfo::getTotalMoELoss)
-                                                           .reduce(0.0f, Float::sum);
+        // 2. Transformer层堆叠（带MoE）
+        for (DeepSeekV3TransformerBlock block : transformerBlocks) {
+            x = block.forward(x);
+        }
         
-        // 创建输出对象
-        return new DeepSeekV3Output(
-            finalLogits,
-            reasoningResult.reasoningSteps,
+        // 3. 推理模块
+        Variable reasoningOutput = reasoningBlock.forward(x);
+        
+        // 4. 代码模块（不改变维度）
+        Variable codeOutput = codeBlock.forward(reasoningOutput);
+        
+        // 5. 最终LayerNorm
+        Variable normalized = finalLayerNorm.forward(codeOutput);
+        
+        // 6. 输出投影
+        Variable logits = outputProjection.forward(normalized);
+        
+        return logits;
+    }
+    
+    /**
+     * 带详细输出的前向传播（包含所有中间结果）
+     * 
+     * @param tokenIds token ID序列 [batch_size, seq_len]
+     * @param taskType 任务类型（可选）
+     * @return 详细输出结果
+     */
+    public DetailedForwardResult forwardWithDetails(Variable tokenIds, TaskType taskType) {
+        validateInput(tokenIds);
+        
+        // 1. Token嵌入
+        Variable x = tokenEmbedding.forward(tokenIds);
+        
+        // 2. Transformer层堆叠（收集MoE损失）
+        double totalMoELoss = 0.0;
+        for (DeepSeekV3TransformerBlock block : transformerBlocks) {
+            DeepSeekV3TransformerBlock.DetailedForwardResult blockResult = 
+                block.forwardWithDetails(x, taskType);
+            x = blockResult.output;
+            totalMoELoss += blockResult.getLoadBalanceLoss();
+        }
+        double avgMoELoss = totalMoELoss / transformerBlocks.size();
+        
+        // 3. 推理模块（获取详细结果）
+        DeepSeekV3ReasoningBlock.ReasoningResult reasoningResult = 
+            reasoningBlock.performReasoning(x, taskType);
+        
+        // 4. 代码分析（如果是代码任务）
+        DeepSeekV3CodeBlock.CodeAnalysisResult codeResult = null;
+        if (taskType == TaskType.CODING || reasoningResult.taskType == TaskType.CODING) {
+            codeResult = codeBlock.analyzeCode(reasoningResult.reasoningOutput);
+        }
+        
+        // 5. 最终LayerNorm
+        Variable normalized = finalLayerNorm.forward(reasoningResult.reasoningOutput);
+        
+        // 6. 输出投影
+        Variable logits = outputProjection.forward(normalized);
+        
+        return new DetailedForwardResult(
+            logits, 
+            reasoningResult,
             codeResult,
-            reasoningResult.finalOutput,
-            totalMoELoss,
-            transformerResult.allRoutingInfo,
-            taskType,
-            reasoningResult.taskType
+            avgMoELoss
         );
     }
     
     /**
-     * 处理嵌入
+     * 验证输入的有效性
      */
-    private Variable processEmbeddings(NdArray inputData, int batchSize, int seqLen) {
-        // 创建位置索引
-        NdArray positions = NdArray.of(Shape.of(batchSize, seqLen));
-        for (int b = 0; b < batchSize; b++) {
-            for (int s = 0; s < seqLen; s++) {
-                positions.set(s, b, s);
-            }
+    private void validateInput(Variable tokenIds) {
+        NdArray data = tokenIds.getValue();
+        if (data.getShape().getDimNum() != 2) {
+            throw new IllegalArgumentException(
+                String.format("输入必须是2维张量 (batch_size, seq_len)，实际: %s", 
+                    data.getShape())
+            );
         }
         
-        // Token嵌入
-        NdArray tokenEmb = embedTokens(inputData);
-        
-        // 位置嵌入
-        NdArray posEmb = embedPositions(positions);
-        
-        // 组合嵌入
-        NdArray combinedEmb = tokenEmb.add(posEmb);
-        
-        // 应用Dropout（简化为不操作）
-        return new Variable(combinedEmb);
-    }
-    
-    /**
-     * Token嵌入
-     */
-    private NdArray embedTokens(NdArray inputIds) {
-        int batchSize = inputIds.getShape().getDimension(0);
-        int seqLen = inputIds.getShape().getDimension(1);
-        NdArray tokenEmbeddingData = tokenEmbedding.getValue();
-        
-        NdArray result = NdArray.of(Shape.of(batchSize, seqLen, dModel));
-        
-        for (int b = 0; b < batchSize; b++) {
-            for (int s = 0; s < seqLen; s++) {
-                int tokenId = (int) inputIds.get(b, s);
-                if (tokenId >= 0 && tokenId < vocabSize) {
-                    for (int d = 0; d < dModel; d++) {
-                        float embValue = tokenEmbeddingData.get(tokenId, d);
-                        result.set(embValue, b, s, d);
-                    }
-                }
-            }
-        }
-        
-        return result;
-    }
-    
-    /**
-     * 位置嵌入
-     */
-    private NdArray embedPositions(NdArray positions) {
-        int batchSize = positions.getShape().getDimension(0);
-        int seqLen = positions.getShape().getDimension(1);
-        NdArray positionEmbeddingData = positionEmbedding.getValue();
-        
-        NdArray result = NdArray.of(Shape.of(batchSize, seqLen, dModel));
-        
-        for (int b = 0; b < batchSize; b++) {
-            for (int s = 0; s < seqLen; s++) {
-                int pos = (int) positions.get(b, s);
-                if (pos >= 0 && pos < maxSeqLen) {
-                    for (int d = 0; d < dModel; d++) {
-                        float posValue = positionEmbeddingData.get(pos, d);
-                        result.set(posValue, b, s, d);
-                    }
-                }
-            }
-        }
-        
-        return result;
-    }
-    
-    /**
-     * 处理Transformer层
-     */
-    private TransformerResult processTransformerLayers(Variable x, NdArray attentionMask, TaskType taskType) {
-        Variable currentOutput = x;
-        List<ExpertRoutingInfo> allRoutingInfo = new ArrayList<>();
-        
-        for (V3TransformerBlock layer : transformerLayers) {
-            currentOutput = layer.forwardWithTaskType(currentOutput, attentionMask, taskType);
-            
-            // 收集MoE路由信息
-            ExpertRoutingInfo routingInfo = layer.getLastRoutingInfo();
-            if (routingInfo != null) {
-                allRoutingInfo.add(routingInfo);
-            }
-        }
-        
-        return new TransformerResult(currentOutput, allRoutingInfo);
-    }
-    
-    /**
-     * 获取最后一次前向传播的输出
-     */
-    public DeepSeekV3Output getLastOutput() {
-        return lastOutput;
-    }
-    
-    /**
-     * 获取总的MoE损失
-     */
-    public float getTotalMoELoss() {
-        if (lastOutput != null) {
-            return lastOutput.moeLoss;
-        }
-        return 0.0f;
-    }
-    
-    /**
-     * 重置所有状态
-     */
-    public void resetAllStates() {
-        lastOutput = null;
-        for (V3TransformerBlock layer : transformerLayers) {
-            layer.resetRoutingInfo();
-        }
-    }
-    
-    // 内部辅助类
-    private static class TransformerResult {
-        final Variable output;
-        final List<ExpertRoutingInfo> allRoutingInfo;
-        
-        TransformerResult(Variable output, List<ExpertRoutingInfo> allRoutingInfo) {
-            this.output = output;
-            this.allRoutingInfo = allRoutingInfo;
+        int seqLen = data.getShape().getDimension(1);
+        if (seqLen > config.getNPositions()) {
+            throw new IllegalArgumentException(
+                String.format("序列长度(%d)超过最大位置数(%d)", seqLen, config.getNPositions())
+            );
         }
     }
     
     /**
-     * DeepSeek V3输出包装类
+     * 估算参数数量
      */
-    public static class DeepSeekV3Output {
+    public long getParameterCount() {
+        return config.estimateParameterCount();
+    }
+    
+    /**
+     * 估算激活参数数量
+     */
+    public long getActiveParameterCount() {
+        return config.estimateActiveParameterCount();
+    }
+    
+    /**
+     * 打印架构信息
+     */
+    public void printArchitecture() {
+        System.out.println("=".repeat(80));
+        System.out.println("DeepSeek-V3 主体块架构");
+        System.out.println("=".repeat(80));
+        System.out.printf("配置: %s\n", config);
+        System.out.println("-".repeat(80));
+        System.out.printf("Token嵌入层: %s\n", tokenEmbedding.getClass().getSimpleName());
+        System.out.printf("Transformer块数量: %d (每块集成MoE)\n", transformerBlocks.size());
+        System.out.printf("专家数量: %d专家, Top-%d选择\n", 
+            config.getNumExperts(), config.getTopK());
+        System.out.printf("推理模块: %s (任务感知)\n", 
+            reasoningBlock.getClass().getSimpleName());
+        System.out.printf("代码模块: %s (支持%d种语言)\n", 
+            codeBlock.getClass().getSimpleName(), config.getNumProgrammingLanguages());
+        System.out.printf("架构模式: Pre-LayerNorm + MoE\n");
+        System.out.printf("估算总参数: %s\n", formatParamCount(getParameterCount()));
+        System.out.printf("激活参数: %s (%.2f%%)\n", 
+            formatParamCount(getActiveParameterCount()),
+            config.getActivationRatio());
+        System.out.println("=".repeat(80));
+    }
+    
+    /**
+     * 格式化参数数量
+     */
+    private String formatParamCount(long count) {
+        if (count >= 1_000_000_000) {
+            return String.format("%.2f B", count / 1_000_000_000.0);
+        } else if (count >= 1_000_000) {
+            return String.format("%.2f M", count / 1_000_000.0);
+        } else {
+            return String.format("%,d", count);
+        }
+    }
+    
+    /**
+     * 详细前向传播结果类
+     */
+    public static class DetailedForwardResult {
+        /** 最终logits输出 */
         public final Variable logits;
-        public final List<V3ReasoningStep> reasoningSteps;
-        public final CodeGenerationBlock.CodeGenerationResult codeInfo;
-        public final Variable hiddenStates;
-        public final float moeLoss;
-        public final List<ExpertRoutingInfo> routingInfo;
-        public final TaskType requestedTaskType;
-        public final TaskType identifiedTaskType;
+        /** 推理结果 */
+        public final DeepSeekV3ReasoningBlock.ReasoningResult reasoningResult;
+        /** 代码分析结果（仅代码任务） */
+        public final DeepSeekV3CodeBlock.CodeAnalysisResult codeResult;
+        /** 平均MoE负载均衡损失 */
+        public final double avgMoELoss;
         
-        public DeepSeekV3Output(Variable logits, List<V3ReasoningStep> reasoningSteps,
-                               CodeGenerationBlock.CodeGenerationResult codeInfo, Variable hiddenStates,
-                               float moeLoss, List<ExpertRoutingInfo> routingInfo,
-                               TaskType requestedTaskType, TaskType identifiedTaskType) {
+        public DetailedForwardResult(Variable logits,
+                                    DeepSeekV3ReasoningBlock.ReasoningResult reasoningResult,
+                                    DeepSeekV3CodeBlock.CodeAnalysisResult codeResult,
+                                    double avgMoELoss) {
             this.logits = logits;
-            this.reasoningSteps = reasoningSteps;
-            this.codeInfo = codeInfo;
-            this.hiddenStates = hiddenStates;
-            this.moeLoss = moeLoss;
-            this.routingInfo = routingInfo;
-            this.requestedTaskType = requestedTaskType;
-            this.identifiedTaskType = identifiedTaskType;
+            this.reasoningResult = reasoningResult;
+            this.codeResult = codeResult;
+            this.avgMoELoss = avgMoELoss;
         }
         
-        /**
-         * 获取推理质量评分
-         */
-        public float getReasoningQuality() {
-            if (reasoningSteps.isEmpty()) {
-                return 0.0f;
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder("DetailedForwardResult{\n");
+            sb.append("  ").append(reasoningResult).append("\n");
+            if (codeResult != null) {
+                sb.append("  ").append(codeResult).append("\n");
             }
-            
-            return (float) reasoningSteps.stream()
-                                       .mapToDouble(V3ReasoningStep::getConfidence)
-                                       .average()
-                                       .orElse(0.0);
-        }
-        
-        /**
-         * 获取代码生成置信度
-         */
-        public float getCodeConfidence() {
-            if (codeInfo != null) {
-                return codeInfo.getCodeConfidence();
-            }
-            return 0.0f;
-        }
-        
-        /**
-         * 获取专家使用统计
-         */
-        public Map<String, Integer> getExpertUsageStats() {
-            Map<String, Integer> stats = new HashMap<>();
-            
-            for (ExpertRoutingInfo info : routingInfo) {
-                for (Integer expertId : info.getSelectedExperts()) {
-                    String key = "expert_" + expertId;
-                    stats.put(key, stats.getOrDefault(key, 0) + 1);
-                }
-            }
-            
-            return stats;
+            sb.append(String.format("  MoE损失: %.6f\n", avgMoELoss));
+            sb.append("}");
+            return sb.toString();
         }
     }
     
-    // Getters
-    public int getVocabSize() {
-        return vocabSize;
+    /**
+     * 获取配置对象
+     */
+    public DeepSeekV3Config getConfig() {
+        return config;
     }
     
-    public int getDModel() {
-        return dModel;
-    }
-    
-    public int getNumLayers() {
-        return numLayers;
-    }
-    
-    public int getNumHeads() {
-        return numHeads;
-    }
-    
-    public int getDFF() {
-        return dFF;
-    }
-    
-    public int getNumExperts() {
-        return numExperts;
-    }
-    
-    public int getMaxSeqLen() {
-        return maxSeqLen;
-    }
-    
-    public float getDropout() {
-        return dropout;
-    }
-    
-    public List<V3TransformerBlock> getTransformerLayers() {
-        return transformerLayers;
-    }
-    
-    public V3ReasoningBlock getReasoningModule() {
-        return reasoningModule;
-    }
-    
-    public CodeGenerationBlock getCodeGeneration() {
-        return codeGeneration;
-    }
-    
-    public Map<TaskType, LinearLayer> getOutputHeads() {
-        return outputHeads;
-    }
-    
-    @Override
-    public String toString() {
-        return String.format("DeepSeekV3Block{name='%s', layers=%d, dModel=%d, numExperts=%d, vocabSize=%d}", 
-                           name, numLayers, dModel, numExperts, vocabSize);
+    /**
+     * 获取Transformer块列表
+     */
+    public List<DeepSeekV3TransformerBlock> getTransformerBlocks() {
+        return transformerBlocks;
     }
 }

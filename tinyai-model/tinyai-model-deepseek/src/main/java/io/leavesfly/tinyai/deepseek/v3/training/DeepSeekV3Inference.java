@@ -1,0 +1,425 @@
+package io.leavesfly.tinyai.deepseek.v3.training;
+
+import io.leavesfly.tinyai.deepseek.v3.DeepSeekV3Model;
+import io.leavesfly.tinyai.deepseek.v3.TaskType;
+import io.leavesfly.tinyai.func.Variable;
+import io.leavesfly.tinyai.ndarr.NdArray;
+import io.leavesfly.tinyai.ndarr.Shape;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+/**
+ * DeepSeek-V3推理引擎
+ * 
+ * 支持多种生成策略和任务感知推理
+ * 
+ * 生成策略：
+ * 1. Greedy贪婪解码 - 选择概率最高的token
+ * 2. Temperature采样 - 控制生成随机性
+ * 3. Top-K采样 - 从Top-K个候选中采样
+ * 4. Top-P(Nucleus)采样 - 累积概率采样
+ * 
+ * @author leavesfly
+ * @version 1.0
+ */
+public class DeepSeekV3Inference {
+    
+    private final DeepSeekV3Model model;
+    private final Random random;
+    
+    /**
+     * 构造函数
+     */
+    public DeepSeekV3Inference(DeepSeekV3Model model) {
+        this.model = model;
+        this.random = new Random();
+    }
+    
+    /**
+     * 设置随机种子
+     */
+    public void setSeed(long seed) {
+        random.setSeed(seed);
+    }
+    
+    // ==================== 贪婪解码 ====================
+    
+    /**
+     * 贪婪解码生成
+     * 
+     * @param promptIds 提示词token序列 [1, prompt_len]
+     * @param maxNewTokens 最大生成token数
+     * @param taskType 任务类型
+     * @return 生成结果
+     */
+    public GenerationResult generateGreedy(int[] promptIds, int maxNewTokens, 
+                                           TaskType taskType) {
+        List<Integer> generated = new ArrayList<>();
+        for (int id : promptIds) {
+            generated.add(id);
+        }
+        
+        List<ReasoningStep> reasoningSteps = new ArrayList<>();
+        
+        for (int i = 0; i < maxNewTokens; i++) {
+            int[] currentSeq = toIntArray(generated);
+            Variable inputVar = new Variable(createInputArray(currentSeq));
+            
+            // 推理（带详细信息）
+            var result = model.predictWithDetails(inputVar, taskType);
+            NdArray logits = result.logits.getValue();
+            
+            // 选择最后一个位置的logits
+            int seqLen = currentSeq.length;
+            int nextToken = argmax(logits, 0, seqLen - 1);
+            
+            generated.add(nextToken);
+            
+            // 记录推理步骤
+            reasoningSteps.add(new ReasoningStep(
+                i,
+                result.reasoningResult.confidence,
+                result.avgMoELoss
+            ));
+        }
+        
+        return new GenerationResult(toIntArray(generated), reasoningSteps);
+    }
+    
+    // ==================== Temperature采样 ====================
+    
+    /**
+     * Temperature采样生成
+     * 
+     * @param promptIds 提示词token序列
+     * @param maxNewTokens 最大生成token数
+     * @param temperature 温度参数（0.1-2.0）,越高越随机
+     * @param taskType 任务类型
+     * @return 生成结果
+     */
+    public GenerationResult generateWithTemperature(int[] promptIds, int maxNewTokens,
+                                                    float temperature, TaskType taskType) {
+        List<Integer> generated = new ArrayList<>();
+        for (int id : promptIds) {
+            generated.add(id);
+        }
+        
+        List<ReasoningStep> reasoningSteps = new ArrayList<>();
+        
+        for (int i = 0; i < maxNewTokens; i++) {
+            int[] currentSeq = toIntArray(generated);
+            Variable inputVar = new Variable(createInputArray(currentSeq));
+            
+            var result = model.predictWithDetails(inputVar, taskType);
+            NdArray logits = result.logits.getValue();
+            
+            int seqLen = currentSeq.length;
+            int vocabSize = logits.getShape().getDimension(2);
+            
+            // 应用temperature
+            float[] probs = new float[vocabSize];
+            float sum = 0.0f;
+            for (int j = 0; j < vocabSize; j++) {
+                float logit = logits.get(0, seqLen - 1, j);
+                probs[j] = (float) Math.exp(logit / temperature);
+                sum += probs[j];
+            }
+            
+            // 归一化
+            for (int j = 0; j < vocabSize; j++) {
+                probs[j] /= sum;
+            }
+            
+            // 采样
+            int nextToken = sampleFromProbs(probs);
+            generated.add(nextToken);
+            
+            reasoningSteps.add(new ReasoningStep(
+                i,
+                result.reasoningResult.confidence,
+                result.avgMoELoss
+            ));
+        }
+        
+        return new GenerationResult(toIntArray(generated), reasoningSteps);
+    }
+    
+    // ==================== Top-K采样 ====================
+    
+    /**
+     * Top-K采样生成
+     * 
+     * @param promptIds 提示词token序列
+     * @param maxNewTokens 最大生成token数
+     * @param topK 保留前K个候选
+     * @param taskType 任务类型
+     * @return 生成结果
+     */
+    public GenerationResult generateTopK(int[] promptIds, int maxNewTokens,
+                                         int topK, TaskType taskType) {
+        List<Integer> generated = new ArrayList<>();
+        for (int id : promptIds) {
+            generated.add(id);
+        }
+        
+        List<ReasoningStep> reasoningSteps = new ArrayList<>();
+        
+        for (int i = 0; i < maxNewTokens; i++) {
+            int[] currentSeq = toIntArray(generated);
+            Variable inputVar = new Variable(createInputArray(currentSeq));
+            
+            var result = model.predictWithDetails(inputVar, taskType);
+            NdArray logits = result.logits.getValue();
+            
+            int seqLen = currentSeq.length;
+            int vocabSize = logits.getShape().getDimension(2);
+            
+            // 获取logits
+            float[] logitArray = new float[vocabSize];
+            for (int j = 0; j < vocabSize; j++) {
+                logitArray[j] = logits.get(0, seqLen - 1, j);
+            }
+            
+            // Top-K过滤
+            int[] topKIndices = getTopKIndices(logitArray, topK);
+            float[] topKProbs = new float[topK];
+            float sum = 0.0f;
+            for (int j = 0; j < topK; j++) {
+                topKProbs[j] = (float) Math.exp(logitArray[topKIndices[j]]);
+                sum += topKProbs[j];
+            }
+            
+            // 归一化
+            for (int j = 0; j < topK; j++) {
+                topKProbs[j] /= sum;
+            }
+            
+            // 采样
+            int sampledIdx = sampleFromProbs(topKProbs);
+            int nextToken = topKIndices[sampledIdx];
+            generated.add(nextToken);
+            
+            reasoningSteps.add(new ReasoningStep(
+                i,
+                result.reasoningResult.confidence,
+                result.avgMoELoss
+            ));
+        }
+        
+        return new GenerationResult(toIntArray(generated), reasoningSteps);
+    }
+    
+    // ==================== Top-P (Nucleus)采样 ====================
+    
+    /**
+     * Top-P(Nucleus)采样生成
+     * 
+     * @param promptIds 提示词token序列
+     * @param maxNewTokens 最大生成token数
+     * @param topP 累积概率阈值（0.9-0.95典型值）
+     * @param taskType 任务类型
+     * @return 生成结果
+     */
+    public GenerationResult generateTopP(int[] promptIds, int maxNewTokens,
+                                         float topP, TaskType taskType) {
+        List<Integer> generated = new ArrayList<>();
+        for (int id : promptIds) {
+            generated.add(id);
+        }
+        
+        List<ReasoningStep> reasoningSteps = new ArrayList<>();
+        
+        for (int i = 0; i < maxNewTokens; i++) {
+            int[] currentSeq = toIntArray(generated);
+            Variable inputVar = new Variable(createInputArray(currentSeq));
+            
+            var result = model.predictWithDetails(inputVar, taskType);
+            NdArray logits = result.logits.getValue();
+            
+            int seqLen = currentSeq.length;
+            int vocabSize = logits.getShape().getDimension(2);
+            
+            // 获取并排序概率
+            float[] probs = new float[vocabSize];
+            float sum = 0.0f;
+            for (int j = 0; j < vocabSize; j++) {
+                float logit = logits.get(0, seqLen - 1, j);
+                probs[j] = (float) Math.exp(logit);
+                sum += probs[j];
+            }
+            
+            // 归一化
+            for (int j = 0; j < vocabSize; j++) {
+                probs[j] /= sum;
+            }
+            
+            // 排序并累积
+            int[] sortedIndices = argsort(probs);
+            float cumProb = 0.0f;
+            List<Integer> nucleusIndices = new ArrayList<>();
+            List<Float> nucleusProbs = new ArrayList<>();
+            
+            for (int j = sortedIndices.length - 1; j >= 0; j--) {
+                int idx = sortedIndices[j];
+                nucleusIndices.add(idx);
+                nucleusProbs.add(probs[idx]);
+                cumProb += probs[idx];
+                if (cumProb >= topP) {
+                    break;
+                }
+            }
+            
+            // 重新归一化并采样
+            float[] nucleusProbArray = new float[nucleusProbs.size()];
+            float nucleusSum = 0.0f;
+            for (int j = 0; j < nucleusProbs.size(); j++) {
+                nucleusProbArray[j] = nucleusProbs.get(j);
+                nucleusSum += nucleusProbArray[j];
+            }
+            for (int j = 0; j < nucleusProbArray.length; j++) {
+                nucleusProbArray[j] /= nucleusSum;
+            }
+            
+            int sampledIdx = sampleFromProbs(nucleusProbArray);
+            int nextToken = nucleusIndices.get(sampledIdx);
+            generated.add(nextToken);
+            
+            reasoningSteps.add(new ReasoningStep(
+                i,
+                result.reasoningResult.confidence,
+                result.avgMoELoss
+            ));
+        }
+        
+        return new GenerationResult(toIntArray(generated), reasoningSteps);
+    }
+    
+    // ==================== 辅助方法 ====================
+    
+    private int argmax(NdArray array, int b, int t) {
+        int vocabSize = array.getShape().getDimension(2);
+        int maxIdx = 0;
+        float maxVal = array.get(b, t, 0);
+        for (int i = 1; i < vocabSize; i++) {
+            float val = array.get(b, t, i);
+            if (val > maxVal) {
+                maxVal = val;
+                maxIdx = i;
+            }
+        }
+        return maxIdx;
+    }
+    
+    private int[] getTopKIndices(float[] values, int k) {
+        int[] indices = new int[k];
+        boolean[] used = new boolean[values.length];
+        
+        for (int i = 0; i < k; i++) {
+            int maxIdx = -1;
+            float maxVal = Float.NEGATIVE_INFINITY;
+            for (int j = 0; j < values.length; j++) {
+                if (!used[j] && values[j] > maxVal) {
+                    maxVal = values[j];
+                    maxIdx = j;
+                }
+            }
+            indices[i] = maxIdx;
+            used[maxIdx] = true;
+        }
+        
+        return indices;
+    }
+    
+    private int[] argsort(float[] array) {
+        Integer[] indices = new Integer[array.length];
+        for (int i = 0; i < array.length; i++) {
+            indices[i] = i;
+        }
+        java.util.Arrays.sort(indices, (a, b) -> Float.compare(array[a], array[b]));
+        int[] result = new int[array.length];
+        for (int i = 0; i < array.length; i++) {
+            result[i] = indices[i];
+        }
+        return result;
+    }
+    
+    private int sampleFromProbs(float[] probs) {
+        float r = random.nextFloat();
+        float cumProb = 0.0f;
+        for (int i = 0; i < probs.length; i++) {
+            cumProb += probs[i];
+            if (r < cumProb) {
+                return i;
+            }
+        }
+        return probs.length - 1;
+    }
+    
+    private int[] toIntArray(List<Integer> list) {
+        int[] array = new int[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            array[i] = list.get(i);
+        }
+        return array;
+    }
+    
+    /**
+     * 创建输入数组 - 将int序列转换为float数组
+     */
+    private NdArray createInputArray(int[] sequence) {
+        float[] data = new float[sequence.length];
+        for (int i = 0; i < sequence.length; i++) {
+            data[i] = sequence[i];
+        }
+        return NdArray.of(data, Shape.of(1, sequence.length));
+    }
+    
+    // ==================== 结果类 ====================
+    
+    /**
+     * 推理步骤信息
+     */
+    public static class ReasoningStep {
+        public final int tokenIndex;
+        public final double confidence;
+        public final double moeLoss;
+        
+        public ReasoningStep(int tokenIndex, double confidence, double moeLoss) {
+            this.tokenIndex = tokenIndex;
+            this.confidence = confidence;
+            this.moeLoss = moeLoss;
+        }
+    }
+    
+    /**
+     * 生成结果
+     */
+    public static class GenerationResult {
+        public final int[] tokens;
+        public final List<ReasoningStep> reasoningSteps;
+        
+        public GenerationResult(int[] tokens, List<ReasoningStep> reasoningSteps) {
+            this.tokens = tokens;
+            this.reasoningSteps = reasoningSteps;
+        }
+        
+        /**
+         * 打印推理追踪
+         */
+        public void printReasoningTrace() {
+            System.out.println("\n推理追踪:");
+            System.out.println("-".repeat(60));
+            for (int i = 0; i < Math.min(5, reasoningSteps.size()); i++) {
+                ReasoningStep step = reasoningSteps.get(i);
+                System.out.printf("Step %d: 置信度=%.4f, MoE损失=%.6f%n",
+                    step.tokenIndex, step.confidence, step.moeLoss);
+            }
+            if (reasoningSteps.size() > 5) {
+                System.out.println("... (" + (reasoningSteps.size() - 5) + " more steps)");
+            }
+            System.out.println("-".repeat(60));
+        }
+    }
+}

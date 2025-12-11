@@ -3,434 +3,391 @@ package io.leavesfly.tinyai.deepseek.v3;
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.Model;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
-
-import java.util.List;
-import java.util.Map;
 
 /**
- * DeepSeek V3模型
+ * DeepSeek-V3模型类
  * 
- * 继承自TinyAI的Model类，提供了DeepSeek V3的完整功能，包括：
- * 1. 模型的初始化和配置
- * 2. 前向传播和推理
- * 3. 任务类型感知的生成
- * 4. 推理过程跟踪
- * 5. 代码生成专门功能
- * 6. 模型状态管理
+ * DeepSeek-V3是一个基于混合专家模型(MoE)的大语言模型，
+ * 通过任务感知路由实现高效的多任务处理和代码生成优化。
+ * 
+ * 主要特性：
+ * 1. 混合专家(MoE) - 8专家Top-2路由，参数激活率约25%
+ * 2. 任务感知 - 支持推理、代码、数学、通用、多模态5种任务
+ * 3. 代码优化 - 专门优化代码生成，支持10种编程语言
+ * 4. Pre-LayerNorm架构 - 提升训练稳定性
  * 
  * @author leavesfly
  * @version 1.0
  */
 public class DeepSeekV3Model extends Model {
     
-    /**
-     * V3模型核心Block
-     */
-    private final DeepSeekV3Block deepSeekV3Block;
-    
-    /**
-     * 模型配置
-     */
-    private final V3ModelConfig config;
+    private final DeepSeekV3Config config;
+    private final DeepSeekV3Block v3Block;
     
     /**
      * 构造函数
      * 
      * @param name 模型名称
-     * @param config V3模型配置
+     * @param config V3配置对象
      */
-    public DeepSeekV3Model(String name, V3ModelConfig config) {
-        super(name, createDeepSeekV3Block(name, config));
-        
+    public DeepSeekV3Model(String name, DeepSeekV3Config config) {
+        super(name, new DeepSeekV3Block(name + "_main", config));
         this.config = config;
-        this.deepSeekV3Block = (DeepSeekV3Block) getBlock();
-        
-        // 设置模型描述
-        setDescription("DeepSeek V3 - 混合专家大语言模型，具备增强推理和代码生成能力");
-        
-        // 更新模型信息
-        updateModelInfo();
+        this.v3Block = (DeepSeekV3Block) getModule();
+        setDescription(buildDescription());
     }
     
     /**
-     * 默认构造函数 - 使用标准配置
+     * 构建模型描述信息
      */
-    public DeepSeekV3Model(String name) {
-        this(name, V3ModelConfig.getDefaultConfig());
-    }
-    
-    /**
-     * 创建DeepSeek V3 Block
-     */
-    private static DeepSeekV3Block createDeepSeekV3Block(String name, V3ModelConfig config) {
-        return new DeepSeekV3Block(
-            name + "_v3_block",
-            config.vocabSize,
-            config.dModel,
-            config.numLayers,
-            config.numHeads,
-            config.dFF,
-            config.numExperts,
-            config.maxSeqLen,
-            config.dropout
+    private String buildDescription() {
+        return String.format(
+            "DeepSeek-V3语言模型 | 参数量: %s | 激活参数: %s (%.1f%%) | 层数: %d | 维度: %d | " +
+            "专家数: %d | Top-K: %d | 架构: Pre-LayerNorm+MoE",
+            formatParamCount(config.estimateParameterCount()),
+            formatParamCount(config.estimateActiveParameterCount()),
+            config.getActivationRatio(),
+            config.getNLayer(),
+            config.getNEmbd(),
+            config.getNumExperts(),
+            config.getTopK()
         );
     }
     
     /**
-     * 更新模型信息
+     * 格式化参数数量
      */
-    private void updateModelInfo() {
-        if (getModelInfo() != null) {
-            getModelInfo().setArchitectureType("DeepSeek V3 - MoE Transformer");
-            getModelInfo().addMetric("num_experts", config.numExperts);
-            getModelInfo().addMetric("max_sequence_length", config.maxSeqLen);
-            getModelInfo().addMetric("vocabulary_size", config.vocabSize);
-            getModelInfo().addMetric("transformer_layers", config.numLayers);
+    private String formatParamCount(long count) {
+        if (count >= 1_000_000_000) {
+            return String.format("%.2fB", count / 1_000_000_000.0);
+        } else if (count >= 1_000_000) {
+            return String.format("%.2fM", count / 1_000_000.0);
+        } else {
+            return String.format("%,d", count);
         }
     }
     
+    // ==================== 工厂方法 ====================
+    
     /**
-     * 执行V3推理生成
-     * 
-     * @param inputIds 输入token IDs
-     * @param taskType 任务类型
-     * @return V3模型输出
+     * 创建标准DeepSeek-V3模型
      */
-    public DeepSeekV3Block.DeepSeekV3Output generateWithTaskType(NdArray inputIds, TaskType taskType) {
-        Variable inputVar = new Variable(inputIds);
-        return deepSeekV3Block.forwardWithTaskType(inputVar, null, taskType);
+    public static DeepSeekV3Model createStandardModel(String name) {
+        return new DeepSeekV3Model(name, DeepSeekV3Config.createStandardConfig());
     }
     
     /**
-     * 通用推理生成（自动识别任务类型）
-     * 
-     * @param inputIds 输入token IDs
-     * @return V3模型输出
+     * 创建微型DeepSeek-V3模型（用于快速测试）
      */
-    public DeepSeekV3Block.DeepSeekV3Output generate(NdArray inputIds) {
-        return generateWithTaskType(inputIds, TaskType.GENERAL);
+    public static DeepSeekV3Model createTinyModel(String name) {
+        return new DeepSeekV3Model(name, DeepSeekV3Config.createTinyConfig());
     }
     
     /**
-     * 代码生成专门接口
+     * 创建小型DeepSeek-V3模型（用于学习和实验）
+     */
+    public static DeepSeekV3Model createSmallModel(String name) {
+        return new DeepSeekV3Model(name, DeepSeekV3Config.createSmallConfig());
+    }
+    
+    // ==================== 推理方法 ====================
+    
+    /**
+     * 标准预测方法
      * 
-     * @param inputIds 输入token IDs
+     * @param tokenIds token ID序列 [batch_size, seq_len]
+     * @return logits输出 [batch_size, seq_len, vocab_size]
+     */
+    public Variable predict(Variable tokenIds) {
+        return forward(tokenIds);
+    }
+    
+    /**
+     * 带详细信息的预测
+     * 
+     * @param tokenIds token ID序列 [batch_size, seq_len]
+     * @param taskType 任务类型（可选）
+     * @return 详细推理结果
+     */
+    public DeepSeekV3Block.DetailedForwardResult predictWithDetails(Variable tokenIds, TaskType taskType) {
+        return v3Block.forwardWithDetails(tokenIds, taskType);
+    }
+    
+    /**
+     * 代码生成任务（专门优化）
+     * 
+     * @param tokenIds token ID序列 [batch_size, seq_len]
      * @return 代码生成结果
      */
-    public CodeGenerationResult generateCode(NdArray inputIds) {
-        DeepSeekV3Block.DeepSeekV3Output output = generateWithTaskType(inputIds, TaskType.CODING);
-        return new CodeGenerationResult(output);
+    public CodeGenerationResult generateCode(Variable tokenIds) {
+        DeepSeekV3Block.DetailedForwardResult result = 
+            v3Block.forwardWithDetails(tokenIds, TaskType.CODING);
+        
+        return new CodeGenerationResult(
+            result.logits,
+            result.codeResult != null ? result.codeResult.detectedLanguage : "Unknown",
+            result.codeResult != null ? result.codeResult.qualityScore : null,
+            result.avgMoELoss
+        );
     }
     
     /**
-     * 推理任务专门接口
+     * 推理任务（任务感知）
      * 
-     * @param inputIds 输入token IDs
+     * @param tokenIds token ID序列 [batch_size, seq_len]
      * @return 推理结果
      */
-    public ReasoningResult performReasoning(NdArray inputIds) {
-        DeepSeekV3Block.DeepSeekV3Output output = generateWithTaskType(inputIds, TaskType.REASONING);
-        return new ReasoningResult(output);
+    public ReasoningResult performReasoning(Variable tokenIds) {
+        DeepSeekV3Block.DetailedForwardResult result = 
+            v3Block.forwardWithDetails(tokenIds, TaskType.REASONING);
+        
+        return new ReasoningResult(
+            result.logits,
+            result.reasoningResult.confidence,
+            result.reasoningResult.taskType,
+            result.avgMoELoss
+        );
     }
     
     /**
-     * 数学计算专门接口
+     * 数学计算任务
      * 
-     * @param inputIds 输入token IDs
+     * @param tokenIds token ID序列 [batch_size, seq_len]
      * @return 数学计算结果
      */
-    public MathResult solveMath(NdArray inputIds) {
-        DeepSeekV3Block.DeepSeekV3Output output = generateWithTaskType(inputIds, TaskType.MATH);
-        return new MathResult(output);
+    public MathResult solveMath(Variable tokenIds) {
+        DeepSeekV3Block.DetailedForwardResult result = 
+            v3Block.forwardWithDetails(tokenIds, TaskType.MATH);
+        
+        return new MathResult(
+            result.logits,
+            result.reasoningResult.confidence,
+            result.avgMoELoss
+        );
     }
     
     /**
-     * 批量生成
+     * 生成序列（贪婪解码）
      * 
-     * @param batchInputIds 批量输入
-     * @param taskType 任务类型
-     * @return 批量输出结果
+     * @param promptIds 提示词token ID序列 [batch_size, prompt_len]
+     * @param maxNewTokens 最大生成token数量
+     * @param taskType 任务类型（可选）
+     * @return 生成的完整序列 [batch_size, prompt_len + maxNewTokens]
      */
-    public BatchGenerationResult generateBatch(NdArray batchInputIds, TaskType taskType) {
-        DeepSeekV3Block.DeepSeekV3Output output = generateWithTaskType(batchInputIds, taskType);
-        return new BatchGenerationResult(output, batchInputIds.getShape().getDimension(0));
-    }
-    
-    /**
-     * 获取模型统计信息
-     */
-    public V3ModelStats getModelStats() {
-        DeepSeekV3Block.DeepSeekV3Output lastOutput = deepSeekV3Block.getLastOutput();
+    public NdArray generateSequence(NdArray promptIds, int maxNewTokens, TaskType taskType) {
+        int batchSize = promptIds.getShape().getDimension(0);
+        int promptLen = promptIds.getShape().getDimension(1);
         
-        V3ModelStats stats = new V3ModelStats();
-        stats.totalParameters = getAllParams().size();
-        stats.vocabSize = config.vocabSize;
-        stats.dModel = config.dModel;
-        stats.numLayers = config.numLayers;
-        stats.numExperts = config.numExperts;
-        stats.maxSeqLen = config.maxSeqLen;
+        float[][] generatedSeq = new float[batchSize][promptLen + maxNewTokens];
         
-        if (lastOutput != null) {
-            stats.lastMoeLoss = lastOutput.moeLoss;
-            stats.lastReasoningQuality = lastOutput.getReasoningQuality();
-            stats.lastCodeConfidence = lastOutput.getCodeConfidence();
-            stats.expertUsageStats = lastOutput.getExpertUsageStats();
+        // 复制提示词
+        for (int b = 0; b < batchSize; b++) {
+            for (int t = 0; t < promptLen; t++) {
+                generatedSeq[b][t] = promptIds.get(b, t);
+            }
         }
         
-        return stats;
+        // 自回归生成
+        for (int i = 0; i < maxNewTokens; i++) {
+            int currentLen = promptLen + i;
+            float[][] currentInput = new float[batchSize][currentLen];
+            for (int b = 0; b < batchSize; b++) {
+                System.arraycopy(generatedSeq[b], 0, currentInput[b], 0, currentLen);
+            }
+            
+            // 预测下一个token（使用任务类型信息）
+            Variable logits;
+            if (taskType != null) {
+                logits = predictWithDetails(new Variable(NdArray.of(currentInput)), taskType).logits;
+            } else {
+                logits = predict(new Variable(NdArray.of(currentInput)));
+            }
+            NdArray logitsArray = logits.getValue();
+            
+            // 贪婪选择
+            for (int b = 0; b < batchSize; b++) {
+                int nextToken = argmax(logitsArray, b, currentLen - 1);
+                generatedSeq[b][currentLen] = nextToken;
+            }
+        }
+        
+        return NdArray.of(generatedSeq);
     }
     
     /**
-     * 重置模型状态
+     * 查找最大值的索引（argmax）
+     */
+    private int argmax(NdArray logits, int batchIdx, int seqIdx) {
+        int vocabSize = logits.getShape().getDimension(2);
+        int maxIdx = 0;
+        float maxVal = logits.get(batchIdx, seqIdx, 0);
+        
+        for (int i = 1; i < vocabSize; i++) {
+            float val = logits.get(batchIdx, seqIdx, i);
+            if (val > maxVal) {
+                maxVal = val;
+                maxIdx = i;
+            }
+        }
+        return maxIdx;
+    }
+    
+    // ==================== 模型信息 ====================
+    
+    /**
+     * 打印模型详细信息
      */
     @Override
-    public void resetState() {
-        super.resetState();
-        deepSeekV3Block.resetAllStates();
+    public void printModelInfo() {
+        System.out.println("=".repeat(80));
+        System.out.println("DeepSeek-V3 模型详细信息");
+        System.out.println("=".repeat(80));
+        System.out.println("模型名称: " + getName());
+        System.out.println("模型描述: " + buildDescription());
+        System.out.println("-".repeat(80));
+        System.out.println(config);
+        System.out.println("-".repeat(80));
+        if (v3Block != null) {
+            v3Block.printArchitecture();
+        }
+        System.out.println("=".repeat(80));
     }
     
     /**
-     * 获取模型配置
+     * 获取配置摘要
      */
-    public V3ModelConfig getConfig() {
+    public String getConfigSummary() {
+        return String.format(
+            "DeepSeek-V3配置摘要:\n" +
+            "  - 词汇表大小: %,d\n" +
+            "  - 嵌入维度: %d\n" +
+            "  - Transformer层数: %d\n" +
+            "  - 注意力头数: %d\n" +
+            "  - 专家数量: %d\n" +
+            "  - Top-K选择: %d\n" +
+            "  - 最大序列长度: %d\n" +
+            "  - 支持任务类型: %d种\n" +
+            "  - 支持编程语言: %d种\n" +
+            "  - 架构: Pre-LayerNorm + MoE\n" +
+            "  - 估算总参数: %s\n" +
+            "  - 激活参数: %s (%.1f%%)",
+            config.getVocabSize(),
+            config.getNEmbd(),
+            config.getNLayer(),
+            config.getNHead(),
+            config.getNumExperts(),
+            config.getTopK(),
+            config.getNPositions(),
+            config.getNumTaskTypes(),
+            config.getNumProgrammingLanguages(),
+            formatParamCount(config.estimateParameterCount()),
+            formatParamCount(config.estimateActiveParameterCount()),
+            config.getActivationRatio()
+        );
+    }
+    
+    // ==================== Getter方法 ====================
+    
+    public DeepSeekV3Config getConfig() {
         return config;
     }
     
-    /**
-     * 获取最后一次推理的详细信息
-     */
-    public DetailedInferenceInfo getLastInferenceDetails() {
-        DeepSeekV3Block.DeepSeekV3Output lastOutput = deepSeekV3Block.getLastOutput();
-        if (lastOutput == null) {
-            return null;
-        }
-        
-        return new DetailedInferenceInfo(lastOutput);
+    public DeepSeekV3Block getV3Block() {
+        return v3Block;
     }
     
-    /**
-     * 打印模型架构信息
-     */
-    public void printArchitecture() {
-        System.out.println("=== DeepSeek V3 模型架构 ===");
-        System.out.println("模型名称: " + getName());
-        System.out.println("词汇表大小: " + config.vocabSize);
-        System.out.println("模型维度: " + config.dModel);
-        System.out.println("Transformer层数: " + config.numLayers);
-        System.out.println("注意力头数: " + config.numHeads);
-        System.out.println("专家数量: " + config.numExperts);
-        System.out.println("最大序列长度: " + config.maxSeqLen);
-        System.out.println("前馈网络维度: " + config.dFF);
-        System.out.println("Dropout概率: " + config.dropout);
-        
-        long totalParams = 0;
-        for (ParameterV1 param : getAllParams().values()) {
-            totalParams += param.getValue().getShape().size();
-        }
-        System.out.println("总参数量: " + formatParameterCount(totalParams));
-        System.out.println("========================");
+    @Override
+    public String toString() {
+        return String.format(
+            "DeepSeekV3Model{name='%s', params=%s, activeParams=%s, nLayer=%d, nEmbd=%d, experts=%d}",
+            getName(), 
+            formatParamCount(config.estimateParameterCount()),
+            formatParamCount(config.estimateActiveParameterCount()),
+            config.getNLayer(), 
+            config.getNEmbd(),
+            config.getNumExperts()
+        );
     }
     
-    /**
-     * 格式化参数数量显示
-     */
-    private String formatParameterCount(long count) {
-        if (count >= 1_000_000_000) {
-            return String.format("%.1fB", count / 1_000_000_000.0);
-        } else if (count >= 1_000_000) {
-            return String.format("%.1fM", count / 1_000_000.0);
-        } else if (count >= 1_000) {
-            return String.format("%.1fK", count / 1_000.0);
-        } else {
-            return String.valueOf(count);
-        }
-    }
-    
-    // 内部结果类
+    // ==================== 内部结果类 ====================
     
     /**
-     * 代码生成结果
+     * 代码生成结果类
      */
     public static class CodeGenerationResult {
         public final Variable logits;
         public final String detectedLanguage;
-        public final float syntaxScore;
-        public final float qualityScore;
-        public final float codeConfidence;
-        public final List<V3ReasoningStep> reasoningSteps;
+        public final DeepSeekV3CodeBlock.CodeQualityScore qualityScore;
+        public final double moeLoss;
         
-        public CodeGenerationResult(DeepSeekV3Block.DeepSeekV3Output output) {
-            this.logits = output.logits;
-            this.reasoningSteps = output.reasoningSteps;
-            
-            if (output.codeInfo != null) {
-                this.detectedLanguage = output.codeInfo.getDetectedLanguage();
-                this.syntaxScore = output.codeInfo.getSyntaxScore();
-                this.qualityScore = output.codeInfo.getQualityScore();
-                this.codeConfidence = output.codeInfo.getCodeConfidence();
-            } else {
-                this.detectedLanguage = "Unknown";
-                this.syntaxScore = 0.0f;
-                this.qualityScore = 0.0f;
-                this.codeConfidence = 0.0f;
-            }
+        public CodeGenerationResult(Variable logits, String detectedLanguage,
+                                   DeepSeekV3CodeBlock.CodeQualityScore qualityScore,
+                                   double moeLoss) {
+            this.logits = logits;
+            this.detectedLanguage = detectedLanguage;
+            this.qualityScore = qualityScore;
+            this.moeLoss = moeLoss;
         }
-    }
-    
-    /**
-     * 推理结果
-     */
-    public static class ReasoningResult {
-        public final Variable logits;
-        public final List<V3ReasoningStep> reasoningSteps;
-        public final float averageConfidence;
-        public final TaskType identifiedTaskType;
-        
-        public ReasoningResult(DeepSeekV3Block.DeepSeekV3Output output) {
-            this.logits = output.logits;
-            this.reasoningSteps = output.reasoningSteps;
-            this.identifiedTaskType = output.identifiedTaskType;
-            
-            this.averageConfidence = (float) reasoningSteps.stream()
-                                                         .mapToDouble(V3ReasoningStep::getConfidence)
-                                                         .average()
-                                                         .orElse(0.0);
-        }
-    }
-    
-    /**
-     * 数学计算结果
-     */
-    public static class MathResult {
-        public final Variable logits;
-        public final List<V3ReasoningStep> reasoningSteps;
-        public final float mathConfidence;
-        
-        public MathResult(DeepSeekV3Block.DeepSeekV3Output output) {
-            this.logits = output.logits;
-            this.reasoningSteps = output.reasoningSteps;
-            
-            // 计算数学推理的置信度
-            this.mathConfidence = (float) reasoningSteps.stream()
-                                                      .filter(step -> step.getTaskType() == TaskType.MATH)
-                                                      .mapToDouble(V3ReasoningStep::getConfidence)
-                                                      .average()
-                                                      .orElse(0.0);
-        }
-    }
-    
-    /**
-     * 批量生成结果
-     */
-    public static class BatchGenerationResult {
-        public final Variable batchLogits;
-        public final int batchSize;
-        public final List<V3ReasoningStep> reasoningSteps;
-        public final float averageReasoningQuality;
-        
-        public BatchGenerationResult(DeepSeekV3Block.DeepSeekV3Output output, int batchSize) {
-            this.batchLogits = output.logits;
-            this.batchSize = batchSize;
-            this.reasoningSteps = output.reasoningSteps;
-            this.averageReasoningQuality = output.getReasoningQuality();
-        }
-    }
-    
-    /**
-     * 模型统计信息
-     */
-    public static class V3ModelStats {
-        public long totalParameters;
-        public int vocabSize;
-        public int dModel;
-        public int numLayers;
-        public int numExperts;
-        public int maxSeqLen;
-        public float lastMoeLoss;
-        public float lastReasoningQuality;
-        public float lastCodeConfidence;
-        public Map<String, Integer> expertUsageStats;
         
         @Override
         public String toString() {
-            return String.format("V3ModelStats{params=%d, experts=%d, moeLoss=%.4f, reasoning=%.3f}", 
-                               totalParameters, numExperts, lastMoeLoss, lastReasoningQuality);
+            return String.format(
+                "CodeGenerationResult{language='%s', quality=%s, moeLoss=%.6f}",
+                detectedLanguage,
+                qualityScore != null ? String.format("%.2f", qualityScore.getOverallScore()) : "N/A",
+                moeLoss
+            );
         }
     }
     
     /**
-     * 详细推理信息
+     * 推理结果类
      */
-    public static class DetailedInferenceInfo {
-        public final TaskType requestedTaskType;
-        public final TaskType identifiedTaskType;
-        public final List<V3ReasoningStep> reasoningSteps;
-        public final float moeLoss;
-        public final float reasoningQuality;
-        public final float codeConfidence;
-        public final Map<String, Integer> expertUsage;
+    public static class ReasoningResult {
+        public final Variable logits;
+        public final double confidence;
+        public final TaskType taskType;
+        public final double moeLoss;
         
-        public DetailedInferenceInfo(DeepSeekV3Block.DeepSeekV3Output output) {
-            this.requestedTaskType = output.requestedTaskType;
-            this.identifiedTaskType = output.identifiedTaskType;
-            this.reasoningSteps = output.reasoningSteps;
-            this.moeLoss = output.moeLoss;
-            this.reasoningQuality = output.getReasoningQuality();
-            this.codeConfidence = output.getCodeConfidence();
-            this.expertUsage = output.getExpertUsageStats();
+        public ReasoningResult(Variable logits, double confidence, 
+                              TaskType taskType, double moeLoss) {
+            this.logits = logits;
+            this.confidence = confidence;
+            this.taskType = taskType;
+            this.moeLoss = moeLoss;
         }
         
-        public void printSummary() {
-            System.out.println("=== 推理详情 ===");
-            System.out.println("请求任务类型: " + requestedTaskType);
-            System.out.println("识别任务类型: " + identifiedTaskType);
-            System.out.println("推理步骤数: " + reasoningSteps.size());
-            System.out.println("推理质量: " + String.format("%.3f", reasoningQuality));
-            System.out.println("MoE损失: " + String.format("%.4f", moeLoss));
-            if (codeConfidence > 0) {
-                System.out.println("代码置信度: " + String.format("%.3f", codeConfidence));
-            }
-            System.out.println("专家使用统计: " + expertUsage);
-            System.out.println("===============");
+        @Override
+        public String toString() {
+            return String.format(
+                "ReasoningResult{confidence=%.4f, taskType=%s, moeLoss=%.6f}",
+                confidence,
+                taskType != null ? taskType.getDescription() : "未知",
+                moeLoss
+            );
         }
     }
     
     /**
-     * V3模型配置类
+     * 数学计算结果类
      */
-    public static class V3ModelConfig {
-        public final int vocabSize;
-        public final int dModel;
-        public final int numLayers;
-        public final int numHeads;
-        public final int dFF;
-        public final int numExperts;
-        public final int maxSeqLen;
-        public final float dropout;
+    public static class MathResult {
+        public final Variable logits;
+        public final double confidence;
+        public final double moeLoss;
         
-        public V3ModelConfig(int vocabSize, int dModel, int numLayers, int numHeads, 
-                           int dFF, int numExperts, int maxSeqLen, float dropout) {
-            this.vocabSize = vocabSize;
-            this.dModel = dModel;
-            this.numLayers = numLayers;
-            this.numHeads = numHeads;
-            this.dFF = dFF;
-            this.numExperts = numExperts;
-            this.maxSeqLen = maxSeqLen;
-            this.dropout = dropout;
+        public MathResult(Variable logits, double confidence, double moeLoss) {
+            this.logits = logits;
+            this.confidence = confidence;
+            this.moeLoss = moeLoss;
         }
         
-        public static V3ModelConfig getDefaultConfig() {
-            return new V3ModelConfig(32000, 768, 12, 12, 3072, 8, 8192, 0.1f);
-        }
-        
-        public static V3ModelConfig getLargeConfig() {
-            return new V3ModelConfig(50000, 1024, 24, 16, 4096, 16, 16384, 0.1f);
-        }
-        
-        public static V3ModelConfig getSmallConfig() {
-            return new V3ModelConfig(16000, 512, 6, 8, 2048, 4, 4096, 0.1f);
+        @Override
+        public String toString() {
+            return String.format(
+                "MathResult{confidence=%.4f, moeLoss=%.6f}",
+                confidence, moeLoss
+            );
         }
     }
 }
