@@ -69,9 +69,13 @@ public class SoftmaxCE extends Function {
         NdArray exp = stabilized.exp();
         NdArray softmax = exp.div(exp.sumTo(Shape.of(row, 1)).broadcastTo(predict.getShape()));
 
-        // one-hot labels
-        NdArray oneHot = NdArray.eye(Shape.of(column, column))
-                .getItem(NdArrayUtil.toInt(label.transpose().getMatrix()[0]), null);
+        // one-hot labels - 直接构造，避免创建巨大的单位矩阵
+        int[] labelIndices = NdArrayUtil.toInt(label.transpose().getMatrix()[0]);
+        float[][] oneHotData = new float[row][column];
+        for (int i = 0; i < row; i++) {
+            oneHotData[i][labelIndices[i]] = 1.0f;
+        }
+        NdArray oneHot = NdArray.of(oneHotData);
 
         float scale = yGrad.getNumber().floatValue() / (float) row;
         NdArray gradPredict = softmax.sub(oneHot).mulNum(scale);

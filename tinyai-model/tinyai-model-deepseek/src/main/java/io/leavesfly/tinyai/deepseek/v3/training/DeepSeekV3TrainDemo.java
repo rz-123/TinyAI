@@ -91,9 +91,9 @@ public class DeepSeekV3TrainDemo {
         System.out.println("示例1: DeepSeek-V3预训练 (含MoE负载均衡)");
         System.out.println("=".repeat(80));
         
-        // 创建微型模型用于演示
-        DeepSeekV3Config config = DeepSeekV3Config.createTinyConfig();
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Tiny", config);
+        // 创建极小型模型用于演示（适合默认JVM堆内存）
+        DeepSeekV3Config config = DeepSeekV3Config.createMicroConfig();
+        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Micro", config);
         
         System.out.println("\n模型配置:");
         System.out.println("  - 隐藏维度: " + config.getNEmbd());
@@ -148,14 +148,14 @@ public class DeepSeekV3TrainDemo {
         System.out.println("=".repeat(80));
         
         // 创建模型
-        DeepSeekV3Config config = DeepSeekV3Config.createTinyConfig();
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Tiny", config);
+        DeepSeekV3Config config = DeepSeekV3Config.createMicroConfig();
+        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Micro", config);
         
         // 创建训练和验证数据集
-        int numTrainSamples = 80;
-        int numValSamples = 20;
-        int seqLength = 32;
-        int batchSize = 4;
+        int numTrainSamples = 40;
+        int numValSamples = 10;
+        int seqLength = 16;
+        int batchSize = 2;
         
         DeepSeekV3Dataset trainDataset = DeepSeekV3Dataset.createDummyDataset(
             numTrainSamples, seqLength, config.getVocabSize(), batchSize
@@ -195,13 +195,13 @@ public class DeepSeekV3TrainDemo {
         System.out.println("=".repeat(80));
         
         // 创建模型
-        DeepSeekV3Config config = DeepSeekV3Config.createTinyConfig();
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Tiny", config);
+        DeepSeekV3Config config = DeepSeekV3Config.createMicroConfig();
+        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Micro", config);
         
         // 创建代码生成数据集
-        int numTrainSamples = 60;
-        int numValSamples = 15;
-        int seqLength = 64;  // 代码任务需要更长序列
+        int numTrainSamples = 30;
+        int numValSamples = 10;
+        int seqLength = 32;  // 代码任务需要更长序列
         int batchSize = 2;
         
         DeepSeekV3Dataset trainDataset = DeepSeekV3Dataset.createCodeDataset(
@@ -247,8 +247,8 @@ public class DeepSeekV3TrainDemo {
         System.out.println("=".repeat(80));
         
         // 创建模型
-        DeepSeekV3Config config = DeepSeekV3Config.createTinyConfig();
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Tiny", config);
+        DeepSeekV3Config config = DeepSeekV3Config.createMicroConfig();
+        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Micro", config);
         
         // 创建推理引擎
         DeepSeekV3Inference inference = new DeepSeekV3Inference(model);
@@ -303,8 +303,8 @@ public class DeepSeekV3TrainDemo {
         System.out.println("=".repeat(80));
         
         // 创建模型
-        DeepSeekV3Config config = DeepSeekV3Config.createTinyConfig();
-        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Tiny", config);
+        DeepSeekV3Config config = DeepSeekV3Config.createMicroConfig();
+        DeepSeekV3Model model = new DeepSeekV3Model("DeepSeek-V3-Micro", config);
         
         // 创建推理引擎
         DeepSeekV3Inference inference = new DeepSeekV3Inference(model);

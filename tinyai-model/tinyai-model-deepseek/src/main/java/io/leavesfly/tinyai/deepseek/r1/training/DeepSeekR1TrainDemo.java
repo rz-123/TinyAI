@@ -44,14 +44,17 @@ public class DeepSeekR1TrainDemo {
         System.out.println("示例1: DeepSeek-R1预训练");
         System.out.println("=".repeat(80));
         
-        // 创建微型模型用于演示
+        // 创建微型模型用于演示，降低内存占用
         DeepSeekR1Config config = DeepSeekR1Config.createTinyConfig();
+        // 减少推理步数以降低计算图深度
+        config.setMaxReasoningSteps(2);
+        config.setNLayer(2);  // 减少Transformer层数
         DeepSeekR1Model model = new DeepSeekR1Model("DeepSeek-R1-Tiny", config);
         
-        // 创建示例数据集
-        int numSamples = 100;
-        int seqLength = 32;
-        int batchSize = 4;
+        // 创建示例数据集，减小序列长度
+        int numSamples = 50;
+        int seqLength = 16;
+        int batchSize = 2;
         DeepSeekR1Dataset trainDataset = DeepSeekR1Dataset.createDummyDataset(
             numSamples, seqLength, config.getVocabSize(), batchSize
         );
@@ -61,11 +64,14 @@ public class DeepSeekR1TrainDemo {
         
         // 配置训练参数
         pretrain.configure(
-            2,           // maxEpochs (演示用小epoch)
+            2,           // maxEpochs (演示用小 epoch)
             1e-4f,       // learningRate
             50,          // warmupSteps
             1.0f         // maxGradNorm
         );
+                
+        // 设置较小的日志间隔以便观察训练进度
+        pretrain.setLogInterval(5);
         
         pretrain.setCheckpoint("./checkpoints/r1_pretrain_demo", 500);
         

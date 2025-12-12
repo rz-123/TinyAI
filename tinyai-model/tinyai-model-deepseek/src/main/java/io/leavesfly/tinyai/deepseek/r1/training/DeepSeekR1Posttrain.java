@@ -6,6 +6,7 @@ import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.loss.SoftmaxCrossEntropy;
 import io.leavesfly.tinyai.ml.optimize.Adam;
 import io.leavesfly.tinyai.ndarr.NdArray;
+import io.leavesfly.tinyai.ndarr.Shape;
 import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.io.File;
@@ -65,7 +66,7 @@ public class DeepSeekR1Posttrain {
         this.maxEpochs = 5;
         this.learningRate = 2.5e-5f;
         this.maxGradNorm = 1.0f;
-        this.logInterval = 50;
+        this.logInterval = 5;
         this.evalInterval = 100;
         this.patience = 3;
         this.checkpointDir = "./checkpoints/deepseek_r1_posttrain";
@@ -138,8 +139,15 @@ public class DeepSeekR1Posttrain {
             Variable inputVar = new Variable(inputIds);
             DeepSeekR1Model.ReasoningOutput result = model.performReasoning(inputVar);
             
-            Variable targetVar = new Variable(targetIds);
-            Variable loss = lossFunction.loss(targetVar, result.logits);
+            // SoftmaxCE只支持2D输入，需要reshape
+            int[] logitsShape = result.logits.getValue().getShape().getShapeDims();
+            int batchSize = logitsShape[0];
+            int seqLen = logitsShape[1];
+            int vocabSize = logitsShape[2];
+            
+            Variable logits2D = result.logits.reshape(Shape.of(batchSize * seqLen, vocabSize));
+            Variable targetVar = new Variable(targetIds.reshape(Shape.of(batchSize * seqLen, 1)));
+            Variable loss = lossFunction.loss(targetVar, logits2D);
             
             float lossValue = loss.getValue().getNumber().floatValue();
             float qualityScore = (float) result.qualityScore.getOverallScore();
@@ -151,7 +159,11 @@ public class DeepSeekR1Posttrain {
             loss.backward();
             clipGradients();
             optimizer.update();
+            
+            // 彻底断开计算图，释放内存
             loss.unChainBackward();
+            result.logits.unChainBackward();
+            inputVar.unChainBackward();
             
             globalStep++;
             
@@ -162,6 +174,8 @@ public class DeepSeekR1Posttrain {
         }
         
         trainDataset.reset();
+        // Epoch结束后主动触发GC
+        System.gc();
     }
     
     private float evaluate() {
@@ -176,11 +190,23 @@ public class DeepSeekR1Posttrain {
             Variable inputVar = new Variable(batch.getInputIds());
             DeepSeekR1Model.ReasoningOutput result = model.performReasoning(inputVar);
             
-            Variable targetVar = new Variable(batch.getTargetIds());
-            Variable loss = lossFunction.loss(targetVar, result.logits);
+            // SoftmaxCE只支持2D输入，需要reshape
+            int[] logitsShape = result.logits.getValue().getShape().getShapeDims();
+            int batchSize = logitsShape[0];
+            int seqLen = logitsShape[1];
+            int vocabSize = logitsShape[2];
+            
+            Variable logits2D = result.logits.reshape(Shape.of(batchSize * seqLen, vocabSize));
+            Variable targetVar = new Variable(batch.getTargetIds().reshape(Shape.of(batchSize * seqLen, 1)));
+            Variable loss = lossFunction.loss(targetVar, logits2D);
             
             totalLoss += loss.getValue().getNumber().floatValue();
             count++;
+            
+            // 验证时也需要释放计算图
+            loss.unChainBackward();
+            result.logits.unChainBackward();
+            inputVar.unChainBackward();
         }
         
         valDataset.reset();

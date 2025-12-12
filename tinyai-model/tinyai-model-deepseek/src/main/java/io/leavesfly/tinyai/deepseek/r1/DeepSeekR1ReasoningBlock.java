@@ -172,11 +172,11 @@ public class DeepSeekR1ReasoningBlock extends Module {
         int seqLen = hiddenData.getShape().getDimension(1);
         int hiddenDim = hiddenData.getShape().getDimension(2);
         
-        // 使用slice提取最后一个时间步: [batch_size, seq_len, hidden_dim] -> [batch_size, 1, hidden_dim]
-        Variable lastHiddenVar = hiddenState.slice(
-            new int[]{0, seqLen - 1, 0},
-            new int[]{batchSize, seqLen, hiddenDim}
-        );
+        // 提取最后一个时间步: [batch_size, seq_len, hidden_dim] -> [batch_size, 1, hidden_dim]
+        // 使用 indexSelect 保持计算图连通
+        Variable indexVar = new Variable(NdArray.of((float)(seqLen - 1)));
+        indexVar.setRequireGrad(false);
+        Variable lastHiddenVar = hiddenState.indexSelect(1, indexVar);
         
         // 投影到置信度分数
         Variable confidenceScore = confidenceProjection.forward(lastHiddenVar);

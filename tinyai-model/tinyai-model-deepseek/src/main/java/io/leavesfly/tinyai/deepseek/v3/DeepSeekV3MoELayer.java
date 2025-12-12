@@ -169,36 +169,24 @@ public class DeepSeekV3MoELayer extends Module {
     
     /**
      * 获取任务类型的专家偏置
+     * 
+     * 根据实际专家数量动态分配偏置，避免越界
      */
     private float[] getTaskBias(TaskType taskType) {
-        float[] bias = new float[config.getNumExperts()];
+        int numExperts = config.getNumExperts();
+        float[] bias = new float[numExperts];
         
-        // 根据任务类型设置偏置（简化版本）
-        // 实际应该通过学习得到
-        switch (taskType) {
-            case REASONING:
-                // 推理任务倾向于专家0和1
-                bias[0] = 1.0f;
-                bias[1] = 1.0f;
-                break;
-            case CODING:
-                // 代码任务倾向于专家2和3
-                bias[2] = 1.0f;
-                bias[3] = 1.0f;
-                break;
-            case MATH:
-                // 数学任务倾向于专家4和5
-                bias[4] = 1.0f;
-                bias[5] = 1.0f;
-                break;
-            case GENERAL:
-                // 通用任务倾向于专家6和7
-                bias[6] = 0.5f;
-                bias[7] = 0.5f;
-                break;
-            default:
-                // 多模态或其他任务平均分配
-                break;
+        // 根据任务类型和实际专家数量动态分配偏置
+        // 使用取模运算确保索引不越界
+        int taskId = taskType.getId();
+        
+        // 每个任务类型倾向于2个专家（如果专家数足够）
+        int expertsPerTask = Math.max(1, numExperts / 5);  // 5种任务类型
+        int startIdx = (taskId * expertsPerTask) % numExperts;
+        
+        for (int i = 0; i < expertsPerTask && i < numExperts; i++) {
+            int expertIdx = (startIdx + i) % numExperts;
+            bias[expertIdx] = 1.0f;
         }
         
         return bias;
@@ -342,10 +330,9 @@ public class DeepSeekV3MoELayer extends Module {
             // 获取该专家的输出并加权
             Variable expertOut = expertOutputs.get(expertIdx);
             
-            // weightMask: [batch, seq, 1] -> broadcast to [batch, seq, nEmbd]
-            // expertOut: [batch, seq, nEmbd]
-            Variable weightMask3D = weightMask.repeat(1, 1, nEmbd);
-            Variable weightedOut = expertOut.mul(weightMask3D);
+            // 使用广播乘法: [batch, seq, 1] × [batch, seq, nEmbd]
+            // 避免使用repeat创建大量中间变量
+            Variable weightedOut = expertOut.mul(weightMask);
             
             // ✅ 累加到输出（在Variable层面）
             output = output.add(weightedOut);

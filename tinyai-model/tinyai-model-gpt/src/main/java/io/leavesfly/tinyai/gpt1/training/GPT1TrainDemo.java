@@ -1,10 +1,8 @@
 package io.leavesfly.tinyai.gpt1.training;
 
-import io.leavesfly.tinyai.func.Variable;
+
 import io.leavesfly.tinyai.gpt1.GPT1Config;
 import io.leavesfly.tinyai.gpt1.GPT1Model;
-import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.ndarr.Shape;
 
 import java.util.Arrays;
 import java.util.List;

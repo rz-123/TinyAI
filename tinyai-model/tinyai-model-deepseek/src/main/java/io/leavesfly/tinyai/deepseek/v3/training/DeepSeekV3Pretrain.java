@@ -7,6 +7,7 @@ import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.loss.SoftmaxCrossEntropy;
 import io.leavesfly.tinyai.ml.optimize.Adam;
 import io.leavesfly.tinyai.ndarr.NdArray;
+import io.leavesfly.tinyai.ndarr.Shape;
 import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.io.File;
@@ -238,8 +239,19 @@ public class DeepSeekV3Pretrain {
         Variable logits = result.logits;
         
         // 计算语言模型损失
+        // SoftmaxCE只接受2维输入，需要将3D张量reshape为2D
+        int batchSize = inputIds.getShape().getDimension(0);
+        int seqLen = inputIds.getShape().getDimension(1);
+        int vocabSize = model.getConfig().getVocabSize();
+        
+        // logits: [batch_size, seq_len, vocab_size] -> [batch_size * seq_len, vocab_size]
+        Variable logits2D = logits.reshape(Shape.of(batchSize * seqLen, vocabSize));
+        
+        // targets: [batch_size, seq_len] -> [batch_size * seq_len, 1]
         Variable targetVar = new Variable(targetIds);
-        Variable lmLoss = lossFunction.loss(targetVar, logits);
+        Variable targets2D = targetVar.reshape(Shape.of(batchSize * seqLen, 1));
+        
+        Variable lmLoss = lossFunction.loss(targets2D, logits2D);
         
         float lmLossValue = lmLoss.getValue().getNumber().floatValue();
         float moeLossValue = (float) result.avgMoELoss;

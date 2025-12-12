@@ -123,7 +123,7 @@ public class DeepSeekR1TokenEmbedding extends Module {
     private Variable getTokenEmbeddingsV2(Variable tokenIds, Variable tokenEmbedParam,
                                           int batchSize, int sequenceLength) {
         // ✅ 使用indexSelect算子
-        Variable flatIds = tokenIds.reshape(Shape.of(-1));
+        Variable flatIds = tokenIds.reshape(Shape.of(batchSize * sequenceLength));
         Variable flatEmbeds = tokenEmbedParam.indexSelect(0, flatIds);
         return flatEmbeds.reshape(Shape.of(batchSize, sequenceLength, embeddingDim));
     }
@@ -134,18 +134,19 @@ public class DeepSeekR1TokenEmbedding extends Module {
      * @param posEmbedParam 位置嵌入参数
      * @param batchSize 批次大小
      * @param sequenceLength 序列长度
-     * @return 位置嵌入变量 [batch_size, seq_len, embeddingDim]
+     * @return 位置嵌入变量 [1, seq_len, embeddingDim] - 依赖广播机制自动扩展
      */
     private Variable getPositionEmbeddingsV2(Variable posEmbedParam, int batchSize, int sequenceLength) {
-        // ✅ 使用indexSelect + repeat算子
+        // ✅ 使用indexSelect算子，不使用repeat以节省内存
+        // 返回 [1, seq_len, embeddingDim] 形状，依赖add的广播机制自动扩展
         float[] posIndices = new float[sequenceLength];
         for (int i = 0; i < sequenceLength; i++) {
             posIndices[i] = i;
         }
         Variable posIds = new Variable(NdArray.of(posIndices));
+        posIds.setRequireGrad(false);
         Variable posEmbeds = posEmbedParam.indexSelect(0, posIds);
-        Variable posEmbeds3D = posEmbeds.reshape(Shape.of(1, sequenceLength, embeddingDim));
-        return posEmbeds3D.repeat(batchSize, 1, 1);
+        return posEmbeds.reshape(Shape.of(1, sequenceLength, embeddingDim));
     }
     
     /**

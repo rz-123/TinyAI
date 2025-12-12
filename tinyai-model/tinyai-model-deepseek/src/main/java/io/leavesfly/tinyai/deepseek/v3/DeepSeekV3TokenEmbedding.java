@@ -144,7 +144,7 @@ public class DeepSeekV3TokenEmbedding extends Module {
         // 需要将tokenIds展平为1D，然后indexSelect，最后reshape回3D
         
         // 1. 展平tokenIds: [batch_size, seq_len] -> [batch_size * seq_len]
-        Variable flatTokenIds = tokenIds.reshape(Shape.of(-1));
+        Variable flatTokenIds = tokenIds.reshape(Shape.of(batchSize * seqLen));
         
         // 2. 使用indexSelect选择嵌入: [batch_size * seq_len, nEmbd]
         Variable flatEmbeds = tokenEmbedParam.indexSelect(0, flatTokenIds);

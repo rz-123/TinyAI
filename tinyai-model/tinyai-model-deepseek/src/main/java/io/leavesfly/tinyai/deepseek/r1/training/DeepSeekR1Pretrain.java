@@ -6,6 +6,7 @@ import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.loss.SoftmaxCrossEntropy;
 import io.leavesfly.tinyai.ml.optimize.Adam;
 import io.leavesfly.tinyai.ndarr.NdArray;
+import io.leavesfly.tinyai.ndarr.Shape;
 import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.io.File;
@@ -102,6 +103,14 @@ public class DeepSeekR1Pretrain {
     }
     
     /**
+     * 设置日志输出间隔
+     */
+    public DeepSeekR1Pretrain setLogInterval(int logInterval) {
+        this.logInterval = logInterval;
+        return this;
+    }
+    
+    /**
      * 开始训练
      */
     public void train() {
@@ -187,6 +196,9 @@ public class DeepSeekR1Pretrain {
             currentEpoch + 1, avgEpochLoss, avgEpochConf, epochEndTime - epochStartTime);
         
         dataset.reset();
+        
+        // Epoch结束后主动触发GC，帮助释放内存
+        System.gc();
     }
     
     /**
@@ -206,9 +218,17 @@ public class DeepSeekR1Pretrain {
         DeepSeekR1Model.ReasoningOutput result = model.performReasoning(inputVar);
         Variable logits = result.logits;
         
-        // 计算损失
-        Variable targetVar = new Variable(targetIds);
-        Variable loss = lossFunction.loss(targetVar, logits);
+        // 计算损失 - SoftmaxCE只支持2D输入，需要reshape
+        // logits: [batch_size, seq_len, vocab_size] -> [batch_size * seq_len, vocab_size]
+        // targets: [batch_size, seq_len] -> [batch_size * seq_len, 1]
+        int[] logitsShape = logits.getValue().getShape().getShapeDims();
+        int batchSize = logitsShape[0];
+        int seqLen = logitsShape[1];
+        int vocabSize = logitsShape[2];
+        
+        Variable logits2D = logits.reshape(Shape.of(batchSize * seqLen, vocabSize));
+        Variable targetVar = new Variable(targetIds.reshape(Shape.of(batchSize * seqLen, 1)));
+        Variable loss = lossFunction.loss(targetVar, logits2D);
         
         float lossValue = loss.getValue().getNumber().floatValue();
         float confidence = (float) result.averageConfidence;
@@ -225,8 +245,10 @@ public class DeepSeekR1Pretrain {
         // 参数更新
         optimizer.update();
         
-        // 断开计算图
+        // 彻底断开计算图，释放内存
         loss.unChainBackward();
+        logits.unChainBackward();
+        inputVar.unChainBackward();
         
         return new StepResult(lossValue, confidence);
     }

@@ -1,5 +1,7 @@
 package io.leavesfly.tinyai.deepseek.r1;
 
+import java.io.Serializable;
+
 /**
  * DeepSeek-R1模型配置类
  * 
@@ -17,7 +19,9 @@ package io.leavesfly.tinyai.deepseek.r1;
  * @author leavesfly
  * @version 1.0
  */
-public class DeepSeekR1Config {
+public class DeepSeekR1Config implements Serializable {
+    
+    private static final long serialVersionUID = 1L;
     
     // ==================== 基础模型配置 ====================
     
