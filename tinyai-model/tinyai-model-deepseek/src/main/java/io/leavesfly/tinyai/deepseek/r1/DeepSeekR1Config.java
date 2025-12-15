@@ -149,12 +149,12 @@ public class DeepSeekR1Config implements Serializable {
      */
     public static DeepSeekR1Config createTinyConfig() {
         DeepSeekR1Config config = new DeepSeekR1Config();
-        config.setVocabSize(10000);
-        config.setNEmbd(256);
+        config.setVocabSize(1000);
+        config.setNEmbd(64);
         config.setNLayer(6);
         config.setNHead(8);
-        config.setNInner(1024);
-        config.setNPositions(512);
+        config.setNInner(128);
+        config.setNPositions(32);
         config.setMaxReasoningSteps(5);
         config.setReasoningHiddenDim(512);
         config.setReflectionHiddenDim(512);
