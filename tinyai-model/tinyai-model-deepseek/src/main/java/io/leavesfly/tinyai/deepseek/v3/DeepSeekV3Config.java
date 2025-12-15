@@ -214,8 +214,9 @@ public class DeepSeekV3Config {
     
     /**
      * 创建极小型DeepSeek-V3配置（用于默认JVM堆内存下测试）
-     * 配置：64维, 2层, 2头, 2专家, Top-1路由, 序列长度128
+     * 配置：64维, 2层, 2头, 2专家, Top-1路由, 序列长度32
      * 参数量：约200K，适合在默认JVM内存下运行
+     * 注：序列长度从128减小到32，减少填充浪费，提高训练效率
      */
     public static DeepSeekV3Config createMicroConfig() {
         DeepSeekV3Config config = new DeepSeekV3Config();
@@ -224,7 +225,7 @@ public class DeepSeekV3Config {
         config.setNLayer(2);
         config.setNHead(2);
         config.setNInner(128);
-        config.setNPositions(128);
+        config.setNPositions(32);  // 从128减小到32，减少填充浪费
         config.setNumExperts(2);
         config.setTopK(1);
         config.setExpertHiddenDim(128);

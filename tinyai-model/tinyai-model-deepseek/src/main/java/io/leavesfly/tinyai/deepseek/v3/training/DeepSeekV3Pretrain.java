@@ -3,6 +3,7 @@ package io.leavesfly.tinyai.deepseek.v3.training;
 import io.leavesfly.tinyai.deepseek.v3.DeepSeekV3Block;
 import io.leavesfly.tinyai.deepseek.v3.DeepSeekV3Config;
 import io.leavesfly.tinyai.deepseek.v3.DeepSeekV3Model;
+import io.leavesfly.tinyai.deepseek.v3.TaskType;
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.loss.SoftmaxCrossEntropy;
 import io.leavesfly.tinyai.ml.optimize.Adam;
@@ -231,6 +232,11 @@ public class DeepSeekV3Pretrain {
         NdArray inputIds = batch.getInputIds();
         NdArray targetIds = batch.getTargetIds();
         
+        // 打印批数据详情（用于调试数据结构）
+//        if (globalStep % logInterval == 0) {
+//            printBatchDetails(batch, inputIds, targetIds);
+//        }
+        
         Variable inputVar = new Variable(inputIds);
         
         // 前向传播(带详细信息,包含MoE损失)
@@ -282,6 +288,139 @@ public class DeepSeekV3Pretrain {
         totalLoss.unChainBackward();
         
         return new StepResult(lmLossValue, moeLossValue, confidence);
+    }
+    
+    /**
+     * 打印批数据详情(用于调试数据结构)
+     */
+    private void printBatchDetails(DeepSeekV3Dataset.Batch batch, NdArray inputIds, NdArray targetIds) {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("🔍 批数据详情检查 (Step " + globalStep + ")");
+        System.out.println("=".repeat(80));
+        
+        // 1. 批次基本信息
+        System.out.println("[批次信息]");
+        System.out.println("  - 主要任务类型: " + batch.getMajorityTaskType());
+        
+        // 统计任务类型分布
+        TaskType[] taskTypes = batch.getTaskTypes();
+        if (taskTypes != null && taskTypes.length > 0) {
+            int[] counts = new int[5];  // 5种任务类型
+            for (TaskType type : taskTypes) {
+                if (type != null) {
+                    counts[type.getId()]++;
+                }
+            }
+            System.out.print("  - 各任务类型数量: {");
+            boolean first = true;
+            for (int i = 0; i < counts.length; i++) {
+                if (counts[i] > 0) {
+                    if (!first) System.out.print(", ");
+                    System.out.print(TaskType.fromId(i) + "=" + counts[i]);
+                    first = false;
+                }
+            }
+            System.out.println("}");
+        }
+        
+        // 2. 输入数据（使用NdArray的toString按形状打印）
+        System.out.println("\n[输入数据 - 按形状打印]");
+        System.out.println("  - 词汇表大小: " + config.getVocabSize());
+        System.out.println(inputIds.toString());
+        
+        // 检查是否有超出词汇表的token ID
+        float[] inputData = inputIds.getArray();
+        boolean hasInvalidTokens = false;
+        for (float val : inputData) {
+            if (val >= config.getVocabSize() || val < 0) {
+                hasInvalidTokens = true;
+                break;
+            }
+        }
+        if (hasInvalidTokens) {
+            System.out.println("  ⚠️ 警告: 发现超出词汇表范围的token ID!");
+        } else {
+            System.out.println("  ✓ 所有token ID均在有效范围内");
+        }
+        
+        // 3. 目标数据（使用NdArray的toString按形状打印）
+        System.out.println("\n[目标数据 - 按形状打印]");
+        System.out.println(targetIds.toString());
+        
+        // 检查目标是否有超出词汇表的token ID
+        float[] targetData = targetIds.getArray();
+        boolean hasInvalidTargets = false;
+        for (float val : targetData) {
+            if (val >= config.getVocabSize() || val < 0) {
+                hasInvalidTargets = true;
+                break;
+            }
+        }
+        if (hasInvalidTargets) {
+            System.out.println("  ⚠️ 警告: 发现超出词汇表范围的目标token ID!");
+        } else {
+            System.out.println("  ✓ 所有目标token ID均在有效范围内");
+        }
+        
+        // 4. 数据对齐检查（目标应该是输入左移1位）
+        System.out.println("\n[数据对齐检查]");
+        Shape inputShape = inputIds.getShape();
+        int seqLen = inputShape.getDimension(1);
+        boolean isAligned = true;
+        for (int i = 0; i < Math.min(5, seqLen - 1); i++) {
+            if (Math.abs(inputData[i + 1] - targetData[i]) > 0.001) {
+                isAligned = false;
+                break;
+            }
+        }
+        if (isAligned && seqLen > 1) {
+            System.out.println("  ✓ 目标序列 = 输入序列左移1位 (符合预期)");
+        } else {
+            System.out.println("  ⚠️ 注意: 目标和输入可能未按预期对齐");
+        }
+        
+        // 5. 填充值分析（检查0的分布情况）
+        System.out.println("\n[填充值分析]");
+        int batchSize = inputShape.getDimension(0);
+        int[] paddingCounts = new int[batchSize];
+        int[] validTokenCounts = new int[batchSize];
+        
+        for (int i = 0; i < batchSize; i++) {
+            int validCount = 0;
+            int paddingCount = 0;
+            for (int j = 0; j < seqLen; j++) {
+                int idx = i * seqLen + j;
+                if (Math.abs(inputData[idx]) < 0.001) {  // 假设0是填充值
+                    paddingCount++;
+                } else {
+                    validCount++;
+                }
+            }
+            paddingCounts[i] = paddingCount;
+            validTokenCounts[i] = validCount;
+        }
+        
+        System.out.println("  - 各样本有效token数量:");
+        for (int i = 0; i < batchSize; i++) {
+            float ratio = (validTokenCounts[i] * 100.0f) / seqLen;
+            System.out.printf("    样本%d: %d个有效token, %d个填充 (有效率: %.1f%%)%n", 
+                i + 1, validTokenCounts[i], paddingCounts[i], ratio);
+        }
+        
+        // 检查是否有token ID为0但不是填充的情况
+        int zeroCount = 0;
+        for (float val : inputData) {
+            if (Math.abs(val) < 0.001) zeroCount++;
+        }
+        float zeroProportion = (zeroCount * 100.0f) / inputData.length;
+        System.out.printf("  - 整批数据中0的占比: %.1f%% (%d/%d)%n", 
+            zeroProportion, zeroCount, inputData.length);
+        
+        if (zeroProportion > 50) {
+            System.out.println("  ⚠️ 警告: 填充值占比过高(>50%)，可能影响训练效果!");
+        }
+        
+        System.out.println("=".repeat(80) + "\n");
     }
     
     /**

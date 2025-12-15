@@ -954,15 +954,49 @@ public class NdArrayCpu implements NdArray, Serializable {
     }
 
     /**
-     * 优化的toString方法，提供数组的字符串表示
-     *
-     * <p>对于小数组会显示所有元素，对于大数组只会显示部分元素</p>
-     *
-     * @return 数组的字符串表示
+     * 重写toString方法，按形状美观地打印数组
+     * 
+     * <p>根据数组维度智能格式化输出：</p>
+     * <ul>
+     *   <li>标量(1x1)：直接显示数值</li>
+     *   <li>1维数组：[1.0, 2.0, 3.0]</li>
+     *   <li>2维数组(矩阵)：带换行和对齐的矩阵格式</li>
+     *   <li>3维及以上：递归显示嵌套结构</li>
+     * </ul>
+     * 
+     * @return 格式化的字符串表示
      */
     @Override
     public String toString() {
-        return ArrayFormatter.toString(this);
+        StringBuilder sb = new StringBuilder();
+        
+        // 显示形状信息
+        sb.append("NdArray(shape=").append(shape).append(")\n");
+        
+        // 根据维度格式化输出
+        int ndim = shape.dimension.length;
+        
+        if (ndim == 0 || (ndim == 2 && shape.dimension[0] == 1 && shape.dimension[1] == 1)) {
+            // 标量
+            sb.append(formatFloat(buffer[0]));
+        } else if (ndim == 1 || (ndim == 2 && shape.dimension[0] == 1)) {
+            // 1维数组或行向量
+            format1DArray(sb, 0, shape.size());
+        } else if (ndim == 2) {
+            // 2维矩阵
+            format2DArray(sb);
+        } else if (ndim == 3) {
+            // 3维数组
+            format3DArray(sb);
+        } else if (ndim == 4) {
+            // 4维数组
+            format4DArray(sb);
+        } else {
+            // 更高维度，简化显示
+            formatHighDimArray(sb);
+        }
+        
+        return sb.toString();
     }
 
     /**
@@ -1024,6 +1058,180 @@ public class NdArrayCpu implements NdArray, Serializable {
             throw new IllegalArgumentException(String.format("维度数量不匹配：提供%d个维度，需要%d个维度", _dimension.length, shape.dimension.length));
         }
         return buffer[shape.getIndex(_dimension)];
+    }
+
+    /**
+     * 格式化浮点数显示
+     */
+    private String formatFloat(float value) {
+        // 整数直接显示为整数格式
+        if (value == (int) value) {
+            return String.valueOf((int) value);
+        }
+        // 小数保留4位
+        return String.format("%.4f", value);
+    }
+    
+    /**
+     * 格式化1维数组
+     */
+    private void format1DArray(StringBuilder sb, int start, int length) {
+        sb.append("[");
+        int displayCount = Math.min(length, 10);  // 最多显示10个元素
+        
+        for (int i = 0; i < displayCount; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(formatFloat(buffer[start + i]));
+        }
+        
+        if (length > displayCount) {
+            sb.append(", ... (total ").append(length).append(" elements)");
+        }
+        sb.append("]");
+    }
+    
+    /**
+     * 格式化2维矩阵
+     */
+    private void format2DArray(StringBuilder sb) {
+        int rows = shape.dimension[0];
+        int cols = shape.dimension[1];
+        
+        sb.append("[");
+        int displayRows = Math.min(rows, 10);  // 最多显示10行
+        int displayCols = Math.min(cols, 10);  // 最多显示10列
+        
+        for (int i = 0; i < displayRows; i++) {
+            if (i > 0) sb.append("\n ");
+            sb.append("[");
+            
+            for (int j = 0; j < displayCols; j++) {
+                if (j > 0) sb.append(", ");
+                int idx = i * cols + j;
+                sb.append(formatFloat(buffer[idx]));
+            }
+            
+            if (cols > displayCols) {
+                sb.append(", ...");
+            }
+            sb.append("]");
+        }
+        
+        if (rows > displayRows) {
+            sb.append("\n ...");
+        }
+        sb.append("]");
+    }
+    
+    /**
+     * 格式化3维数组
+     */
+    private void format3DArray(StringBuilder sb) {
+        int dim0 = shape.dimension[0];
+        int dim1 = shape.dimension[1];
+        int dim2 = shape.dimension[2];
+        
+        sb.append("[");
+        int displayDim0 = Math.min(dim0, 3);  // 最多显示3个
+        
+        for (int i = 0; i < displayDim0; i++) {
+            if (i > 0) sb.append("\n\n ");
+            sb.append("[");
+            
+            int displayDim1 = Math.min(dim1, 5);  // 最多显示5行
+            for (int j = 0; j < displayDim1; j++) {
+                if (j > 0) sb.append("\n  ");
+                sb.append("[");
+                
+                int displayDim2 = Math.min(dim2, 8);  // 最多显示8列
+                for (int k = 0; k < displayDim2; k++) {
+                    if (k > 0) sb.append(", ");
+                    int idx = i * dim1 * dim2 + j * dim2 + k;
+                    sb.append(formatFloat(buffer[idx]));
+                }
+                
+                if (dim2 > displayDim2) {
+                    sb.append(", ...");
+                }
+                sb.append("]");
+            }
+            
+            if (dim1 > displayDim1) {
+                sb.append("\n  ...");
+            }
+            sb.append("]");
+        }
+        
+        if (dim0 > displayDim0) {
+            sb.append("\n ...");
+        }
+        sb.append("]");
+    }
+    
+    /**
+     * 格式化4维数组
+     */
+    private void format4DArray(StringBuilder sb) {
+        int dim0 = shape.dimension[0];
+        int dim1 = shape.dimension[1];
+        int dim2 = shape.dimension[2];
+        int dim3 = shape.dimension[3];
+        
+        sb.append("[");
+        int displayDim0 = Math.min(dim0, 2);  // 最多显示2个
+        
+        for (int i = 0; i < displayDim0; i++) {
+            if (i > 0) sb.append("\n\n\n ");
+            sb.append("[");
+            
+            int displayDim1 = Math.min(dim1, 3);
+            for (int j = 0; j < displayDim1; j++) {
+                if (j > 0) sb.append("\n\n  ");
+                sb.append("[");
+                
+                int displayDim2 = Math.min(dim2, 4);
+                for (int k = 0; k < displayDim2; k++) {
+                    if (k > 0) sb.append("\n   ");
+                    sb.append("[");
+                    
+                    int displayDim3 = Math.min(dim3, 6);
+                    for (int l = 0; l < displayDim3; l++) {
+                        if (l > 0) sb.append(", ");
+                        int idx = i * dim1 * dim2 * dim3 + j * dim2 * dim3 + k * dim3 + l;
+                        sb.append(formatFloat(buffer[idx]));
+                    }
+                    
+                    if (dim3 > displayDim3) {
+                        sb.append(", ...");
+                    }
+                    sb.append("]");
+                }
+                
+                if (dim2 > displayDim2) {
+                    sb.append("\n   ...");
+                }
+                sb.append("]");
+            }
+            
+            if (dim1 > displayDim1) {
+                sb.append("\n  ...");
+            }
+            sb.append("]");
+        }
+        
+        if (dim0 > displayDim0) {
+            sb.append("\n ...");
+        }
+        sb.append("]");
+    }
+    
+    /**
+     * 格式化高维数组（5维及以上）
+     */
+    private void formatHighDimArray(StringBuilder sb) {
+        sb.append("[high-dimensional array with ").append(buffer.length).append(" elements]\n");
+        sb.append("First 20 elements: ");
+        format1DArray(sb, 0, Math.min(20, buffer.length));
     }
 
 }

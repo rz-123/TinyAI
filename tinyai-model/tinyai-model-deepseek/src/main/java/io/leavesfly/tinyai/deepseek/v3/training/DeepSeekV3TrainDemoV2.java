@@ -848,7 +848,7 @@ public class DeepSeekV3TrainDemoV2 {
             // 截断或填充到maxSeqLength
             // 显式使用PAD_TOKEN_ID填充，避免与词汇ID冲突
             int[] paddedSeq = new int[maxSeqLength];
-            java.util.Arrays.fill(paddedSeq, SimpleTokenizer.PAD_TOKEN_ID);
+           Arrays.fill(paddedSeq, SimpleTokenizer.PAD_TOKEN_ID);
             int copyLen = Math.min(sequence.length, maxSeqLength);
             System.arraycopy(sequence, 0, paddedSeq, 0, copyLen);
             
