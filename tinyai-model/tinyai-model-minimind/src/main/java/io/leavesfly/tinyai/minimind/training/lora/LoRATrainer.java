@@ -59,7 +59,7 @@ public class LoRATrainer {
         this.maxGradNorm = 1.0f;
         this.logInterval = 50;
         this.saveInterval = 500;
-        this.checkpointDir = "./lora_checkpoints";
+        this.checkpointDir = "./checkpoints/minimind_lora_checkpoints";
         
         // 创建优化器(仅优化LoRA参数)
         this.optimizer = new Adam(model, learningRate, 0.9f, 0.999f, 1e-8f);
