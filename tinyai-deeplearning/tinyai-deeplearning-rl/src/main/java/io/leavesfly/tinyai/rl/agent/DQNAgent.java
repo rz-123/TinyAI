@@ -12,7 +12,9 @@ import io.leavesfly.tinyai.rl.ReplayBuffer;
 import io.leavesfly.tinyai.rl.policy.EpsilonGreedyPolicy;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.block.MlpBlock;
+import io.leavesfly.tinyai.nnet.v2.container.Sequential;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.ReLU;
 import io.leavesfly.tinyai.util.Config;
 
 /**
@@ -97,21 +99,23 @@ public class DQNAgent extends Agent {
      * @return Q网络模型
      */
     private Model createQNetwork(int stateDim, int actionDim, int[] hiddenSizes) {
-        // 构建网络层尺寸数组
-        int[] allSizes = new int[hiddenSizes.length + 2];
-        allSizes[0] = stateDim;
-        System.arraycopy(hiddenSizes, 0, allSizes, 1, hiddenSizes.length);
-        allSizes[allSizes.length - 1] = actionDim;
+        // 使用Sequential构建MLP网络
+        Sequential mlpModule = new Sequential(name + "_QNetwork");
+        
+        // 输入层
+        int inputSize = stateDim;
+        
+        // 添加隐藏层
+        for (int hiddenSize : hiddenSizes) {
+            mlpModule.add(new Linear("fc", inputSize, hiddenSize, true));
+            mlpModule.add(new ReLU("relu"));
+            inputSize = hiddenSize;
+        }
+        
+        // 输出层
+        mlpModule.add(new Linear("fc_out", inputSize, actionDim, true));
 
-        // 创建MLP网络
-        MlpBlock mlpBlock = new MlpBlock(
-                name + "_QNetwork",
-                1, // batchSize
-                Config.ActiveFunc.ReLU,
-                allSizes
-        );
-
-        return new Model(name + "_QModel", mlpBlock);
+        return new Model(name + "_QModel", mlpModule);
     }
 
     /**

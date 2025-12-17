@@ -5,8 +5,8 @@ import io.leavesfly.tinyai.ndarr.Shape;
 import io.leavesfly.tinyai.nl.core.NestedOptimizationLevel;
 import io.leavesfly.tinyai.nl.core.ContextFlow;
 import io.leavesfly.tinyai.nl.core.FlowDirection;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.LayerAble;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +20,12 @@ import java.util.List;
  * 
  * @author TinyAI Team
  */
-public class NestedLearningBlock extends Block {
+public class NestedLearningBlock extends Module {
+    
+    /**
+     * 子模块列表 (替代v1的layers)
+     */
+    private List<Module> subModules;
     
     /**
      * 嵌套优化层级列表
@@ -55,10 +60,11 @@ public class NestedLearningBlock extends Block {
      * @param inputShape 输入形状
      */
     public NestedLearningBlock(String name, int numLevels, Shape inputShape) {
-        super(name, inputShape);
+        super(name);
         this.numLevels = Math.max(1, numLevels);
         this.optimizationLevels = new ArrayList<>();
         this.contextFlows = new ArrayList<>();
+        this.subModules = new ArrayList<>();
         this.currentStep = 0;
         this.enableContextFlow = true;
         
@@ -103,13 +109,13 @@ public class NestedLearningBlock extends Block {
     }
     
     @Override
-    public void init() {
-        // 初始化所有子层
-        for (LayerAble layer : layers) {
-            layer.init();
+    public void resetParameters() {
+        // 初始化所有子模块
+        for (Module module : subModules) {
+            module.resetParameters();
         }
         
-        // 将子层的参数分配到不同的优化层级
+        // 将子模块的参数分配到不同的优化层级
         distributeParametersToLevels();
     }
     
@@ -117,26 +123,26 @@ public class NestedLearningBlock extends Block {
      * 将参数分配到不同的优化层级
      */
     private void distributeParametersToLevels() {
-        if (layers.isEmpty()) {
+        if (subModules.isEmpty()) {
             return;
         }
         
-        // 简化策略：将层均匀分配到各个优化层级
-        int layersPerLevel = Math.max(1, layers.size() / numLevels);
+        // 简化策略：将子模块均匀分配到各个优化层级
+        int modulesPerLevel = Math.max(1, subModules.size() / numLevels);
         
-        for (int i = 0; i < layers.size(); i++) {
-            int levelIndex = Math.min(i / layersPerLevel, numLevels - 1);
+        for (int i = 0; i < subModules.size(); i++) {
+            int levelIndex = Math.min(i / modulesPerLevel, numLevels - 1);
             NestedOptimizationLevel level = optimizationLevels.get(levelIndex);
             
-            // 获取层的参数并添加到优化层级
-            LayerAble layer = layers.get(i);
+            // 获取模块的参数并添加到优化层级
+            Module module = subModules.get(i);
             // 注意：这里简化处理，实际应该将Parameter转换为Variable
             // 由于Parameter继承自Variable，这里可以直接使用
         }
     }
     
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         if (inputs == null || inputs.length == 0) {
             return null;
         }
@@ -144,10 +150,10 @@ public class NestedLearningBlock extends Block {
         Variable x = inputs[0];
         
         // 执行前向传播
-        if (!layers.isEmpty()) {
-            Variable y = layers.get(0).layerForward(x);
-            for (int i = 1; i < layers.size(); i++) {
-                y = layers.get(i).layerForward(y);
+        if (!subModules.isEmpty()) {
+            Variable y = subModules.get(0).forward(x);
+            for (int i = 1; i < subModules.size(); i++) {
+                y = subModules.get(i).forward(y);
             }
             
             // 如果启用上下文流，传播上下文信息

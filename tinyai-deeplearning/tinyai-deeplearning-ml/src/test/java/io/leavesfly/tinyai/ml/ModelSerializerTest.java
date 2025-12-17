@@ -3,8 +3,8 @@ package io.leavesfly.tinyai.ml;
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.After;
@@ -71,8 +71,8 @@ public class ModelSerializerTest {
         assertTrue("加载的模型应该是SimpleTestModel类型", loadedModel instanceof SimpleTestModel);
         
         // 验证参数是否正确加载
-        Map<String, ParameterV1> originalParams = testModel.getAllParams();
-        Map<String, ParameterV1> loadedParams = loadedModel.getAllParams();
+        Map<String, Parameter> originalParams = testModel.getAllParams();
+        Map<String, Parameter> loadedParams = loadedModel.getAllParams();
         
         assertEquals("参数数量应该相同", originalParams.size(), loadedParams.size());
         
@@ -135,13 +135,13 @@ public class ModelSerializerTest {
         ModelSerializer.loadParameters(newModel, paramsPath);
         
         // 验证参数加载正确
-        Map<String, ParameterV1> originalParams = testModel.getAllParams();
-        Map<String, ParameterV1> loadedParams = newModel.getAllParams();
+        Map<String, Parameter> originalParams = testModel.getAllParams();
+        Map<String, Parameter> loadedParams = newModel.getAllParams();
         
         for (String paramName : originalParams.keySet()) {
             if (loadedParams.containsKey(paramName)) {
-                ParameterV1 originalParam = originalParams.get(paramName);
-                ParameterV1 loadedParam = loadedParams.get(paramName);
+                Parameter originalParam = originalParams.get(paramName);
+                Parameter loadedParam = loadedParams.get(paramName);
                 
                 // 检查参数形状是否相同
                 assertEquals("参数形状应该相同: " + paramName,
@@ -282,7 +282,7 @@ public class ModelSerializerTest {
         // 创建形状不匹配的新模型
         SimpleTestModel mismatchModel = new SimpleTestModel();
         mismatchModel.getAllParams().put("weight", 
-                new ParameterV1(NdArray.of(new float[][]{{1.0f}}))); // 不同形状
+                new Parameter(NdArray.of(new float[][]{{1.0f}}))); // 不同形状
         
         // 尝试加载参数（应该跳过不匹配的参数）
         ModelSerializer.loadParameters(mismatchModel, paramsPath);
@@ -293,24 +293,28 @@ public class ModelSerializerTest {
     /**
      * 测试用的 Block 实现
      */
-    public static class TestBlock extends Block implements java.io.Serializable {
+    public static class TestBlock extends Module implements java.io.Serializable {
         
         private static final long serialVersionUID = 1L;
         
         // 默认构造函数，序列化所需
         public TestBlock() {
-            super("TestBlock", Shape.of(2, 2));
+            super("TestBlock");
         }
         
         // 带参数的构造函数
-        public TestBlock(String name, Shape inputShape) {
-            super(name, inputShape);
+        public TestBlock(String name) {
+            super(name);
         }
         
         @Override
-        public void init() {
+        public void resetParameters() {
             // 简单初始化
-            alreadyInit = true;
+        }
+        
+        @Override
+        public Variable forward(Variable... inputs) {
+            return inputs[0];
         }
     }
 
@@ -320,7 +324,7 @@ public class ModelSerializerTest {
     public static class SimpleTestModel extends Model implements java.io.Serializable {
         
         private static final long serialVersionUID = 1L;
-        private Map<String, ParameterV1> parameters;
+        private Map<String, Parameter> parameters;
 
         public SimpleTestModel() {
             // 传入一个简单的 TestBlock
@@ -328,8 +332,8 @@ public class ModelSerializerTest {
             parameters = new HashMap<>();
             
             // 添加测试参数
-            parameters.put("weight", new ParameterV1(NdArray.of(new float[][]{{1.0f, 2.0f}, {3.0f, 4.0f}})));
-            parameters.put("bias", new ParameterV1(NdArray.of(new float[][]{{0.1f, 0.2f}})));
+            parameters.put("weight", new Parameter(NdArray.of(new float[][]{{1.0f, 2.0f}, {3.0f, 4.0f}})));
+            parameters.put("bias", new Parameter(NdArray.of(new float[][]{{0.1f, 0.2f}})));
         }
 
         @Override
@@ -339,7 +343,7 @@ public class ModelSerializerTest {
         }
 
         @Override
-        public Map<String, ParameterV1> getAllParams() {
+        public Map<String, Parameter> getAllParams() {
             // 直接返回自定义参数
             return new HashMap<>(parameters);
         }

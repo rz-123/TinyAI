@@ -27,7 +27,7 @@ public class HopeModel extends NestedLearningModel {
         
         // 如果启用自修改，应用自修改块
         if (enableSelfModification && selfModifyingBlock != null && output != null) {
-            output = selfModifyingBlock.layerForward(output);
+            output = selfModifyingBlock.forward(output);
         }
         
         return output;

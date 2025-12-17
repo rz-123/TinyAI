@@ -3,9 +3,9 @@ package io.leavesfly.tinyai.vla.encoder;
 import io.leavesfly.tinyai.vla.model.VisionInput;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.func.Variable;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.layer.dnn.LinearLayer;
-import io.leavesfly.tinyai.nnet.v1.layer.cnn.ConvLayer;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.conv.Conv2d;
 
 /**
  * 视觉编码器
@@ -14,7 +14,7 @@ import io.leavesfly.tinyai.nnet.v1.layer.cnn.ConvLayer;
  * 
  * @author TinyAI
  */
-public class VisionEncoder extends Block {
+public class VisionEncoder extends Module {
     
     private final int inputChannels;
     private final int hiddenDim;
@@ -22,12 +22,12 @@ public class VisionEncoder extends Block {
     private final int numPatches;
     
     // 卷积特征提取层
-    private ConvLayer conv1;
-    private ConvLayer conv2;
-    private ConvLayer conv3;
+    private Conv2d conv1;
+    private Conv2d conv2;
+    private Conv2d conv3;
     
     // 投影层：将卷积特征投影到隐藏维度
-    private LinearLayer projection;
+    private Linear projection;
     
     /**
      * 构造函数
@@ -38,7 +38,7 @@ public class VisionEncoder extends Block {
      * @param patchSize Patch大小
      */
     public VisionEncoder(int inputChannels, int hiddenDim, int imageSize, int patchSize) {
-        super("VisionEncoder", null);
+        super("VisionEncoder");
         this.inputChannels = inputChannels;
         this.hiddenDim = hiddenDim;
         this.patchSize = patchSize;
@@ -46,21 +46,21 @@ public class VisionEncoder extends Block {
         
         // 初始化卷积层
         // Conv1: 3 -> 64 channels
-        this.conv1 = new ConvLayer("conv1", inputChannels, 64, 7, 2, 3, true);
+        this.conv1 = new Conv2d("conv1", inputChannels, 64, 7, 2, 3, true);
         
         // Conv2: 64 -> 128 channels
-        this.conv2 = new ConvLayer("conv2", 64, 128, 3, 2, 1, true);
+        this.conv2 = new Conv2d("conv2", 64, 128, 3, 2, 1, true);
         
         // Conv3: 128 -> 256 channels
-        this.conv3 = new ConvLayer("conv3", 128, 256, 3, 2, 1, true);
+        this.conv3 = new Conv2d("conv3", 128, 256, 3, 2, 1, true);
         
         // 投影层：256 * (patch_size^2) -> hiddenDim
         int flattenedDim = 256;
-        this.projection = new LinearLayer("projection", flattenedDim, hiddenDim, true);
+        this.projection = new Linear("projection", flattenedDim, hiddenDim, true);
     }
     
     @Override
-    public void init() {
+    public void resetParameters() {
         // 初始化已在构造函数中完成
     }
     
@@ -75,13 +75,13 @@ public class VisionEncoder extends Block {
         
         // 前向传播通过卷积层
         Variable input = new Variable(rgbImage);
-        Variable conv1Out = conv1.layerForward(input);
+        Variable conv1Out = conv1.forward(input);
         Variable relu1Out = conv1Out.relu();
         
-        Variable conv2Out = conv2.layerForward(relu1Out);
+        Variable conv2Out = conv2.forward(relu1Out);
         Variable relu2Out = conv2Out.relu();
         
-        Variable conv3Out = conv3.layerForward(relu2Out);
+        Variable conv3Out = conv3.forward(relu2Out);
         Variable relu3Out = conv3Out.relu();
         
         // 获取卷积输出的形状 [batch, channels, height, width]
@@ -99,7 +99,7 @@ public class VisionEncoder extends Block {
         
         // 通过投影层
         Variable projInput = new Variable(flattenedFeatures);
-        Variable projOutput = projection.layerForward(projInput);
+        Variable projOutput = projection.forward(projInput);
         
         // 添加位置编码
         NdArray posEncoding = createPositionalEncoding(numSpatialTokens, hiddenDim);
@@ -132,7 +132,7 @@ public class VisionEncoder extends Block {
     }
     
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         // 简化的前向传播接口
         VisionInput visionInput = new VisionInput(inputs[0].getValue());
         NdArray output = encode(visionInput);

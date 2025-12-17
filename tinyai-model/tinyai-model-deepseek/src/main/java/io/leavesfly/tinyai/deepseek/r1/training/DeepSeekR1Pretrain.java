@@ -103,6 +103,8 @@ public class DeepSeekR1Pretrain {
         this.initialLearningRate = learningRate;
         this.warmupSteps = warmupSteps;
         this.maxGradNorm = maxGradNorm;
+        // 同步学习率到优化器
+        this.optimizer.setLearningRate(learningRate);
         return this;
     }
     
@@ -275,7 +277,7 @@ public class DeepSeekR1Pretrain {
             epochLoss = parallelResult.totalLoss;
             epochConfidence = parallelResult.totalConfidence;
             batchCount = batches.size();
-            globalStep += batchCount;
+            // globalStep 已在 trainBatchesParallel 内部更新
         } else {
             // 顺序训练
             for (DeepSeekR1Dataset.Batch batch : batches) {
@@ -343,6 +345,9 @@ public class DeepSeekR1Pretrain {
         
         // 按线程数分组处理批次
         for (int i = 0; i < batchCount; i += parallelThreads) {
+            // 更新学习率
+            updateLearningRate();
+            
             int endIndex = Math.min(i + parallelThreads, batchCount);
             List<DeepSeekR1Dataset.Batch> batchGroup = batches.subList(i, endIndex);
             
@@ -457,6 +462,7 @@ public class DeepSeekR1Pretrain {
             }
             
             processedCount.addAndGet(batchGroup.size());
+            globalStep += batchGroup.size();  // 更新全局步数以支持学习率调度
             
             // 定期输出进度
             int processed = processedCount.get();
@@ -572,6 +578,8 @@ public class DeepSeekR1Pretrain {
             float decayedLR = (initialLearningRate - minLearningRate) * (float) cosineDecay + minLearningRate;
             currentLearningRate = Math.max(decayedLR, minLearningRate);
         }
+        // 同步学习率到优化器
+        optimizer.setLearningRate(currentLearningRate);
     }
     
     /**

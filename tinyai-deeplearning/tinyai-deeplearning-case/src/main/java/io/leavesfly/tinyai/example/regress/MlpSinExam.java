@@ -10,8 +10,10 @@ import io.leavesfly.tinyai.ml.loss.Loss;
 import io.leavesfly.tinyai.ml.loss.MeanSquaredLoss;
 import io.leavesfly.tinyai.ml.optimize.Optimizer;
 import io.leavesfly.tinyai.ml.optimize.SGD;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.block.MlpBlock;
+import io.leavesfly.tinyai.nnet.v2.container.Sequential;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.Sigmoid;
+
 import io.leavesfly.tinyai.util.Config;
 
 import java.util.List;
@@ -48,7 +50,10 @@ public class MlpSinExam {
         Variable variableX = batches.get(0).toVariableX().setName("x").setRequireGrad(false);
         Variable variableY = batches.get(0).toVariableY().setName("y").setRequireGrad(false);
 
-        Block block = new MlpBlock("MlpBlock", batchSize, Config.ActiveFunc.Sigmoid, 1, 10, 1);
+        Sequential block = new Sequential("MlpBlock");
+        block.add(new Linear("fc1", 1, 10, true));
+        block.add(new Sigmoid("sigmoid"));
+        block.add(new Linear("fc2", 10, 1, true));
 
         Model model = new Model("MlpSinExam", block);
         Optimizer optimizer = new SGD(model, 0.2f);

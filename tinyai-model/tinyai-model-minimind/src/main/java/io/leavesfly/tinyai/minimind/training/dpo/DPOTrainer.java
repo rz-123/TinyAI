@@ -6,7 +6,7 @@ import io.leavesfly.tinyai.minimind.model.MiniMindModel;
 import io.leavesfly.tinyai.minimind.training.dataset.DPODataset;
 import io.leavesfly.tinyai.ml.optimize.Adam;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -110,13 +110,13 @@ public class DPOTrainer {
      * 复制模型参数
      */
     private void copyModelParameters(MiniMindModel source, MiniMindModel target) {
-        Map<String, ParameterV1> sourceParams = source.getAllParams();
-        Map<String, ParameterV1> targetParams = target.getAllParams();
+        Map<String, Parameter> sourceParams = source.getAllParams();
+        Map<String, Parameter> targetParams = target.getAllParams();
         
         for (String name : sourceParams.keySet()) {
             if (targetParams.containsKey(name)) {
-                ParameterV1 sourceParam = sourceParams.get(name);
-                ParameterV1 targetParam = targetParams.get(name);
+                Parameter sourceParam = sourceParams.get(name);
+                Parameter targetParam = targetParams.get(name);
                 
                 // 复制数据
                 NdArray sourceData = sourceParam.getValue();
@@ -309,9 +309,9 @@ public class DPOTrainer {
         }
         
         float totalNorm = 0.0f;
-        Map<String, ParameterV1> params = policyModel.getAllParams();
+        Map<String, Parameter> params = policyModel.getAllParams();
         
-        for (ParameterV1 param : params.values()) {
+        for (Parameter param : params.values()) {
             if (param.getGrad() != null) {
                 float[] gradData = ((io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu) param.getGrad()).buffer;
                 for (float g : gradData) {
@@ -323,7 +323,7 @@ public class DPOTrainer {
         
         if (totalNorm > maxGradNorm) {
             float scale = maxGradNorm / (totalNorm + 1e-6f);
-            for (ParameterV1 param : params.values()) {
+            for (Parameter param : params.values()) {
                 if (param.getGrad() != null) {
                     float[] gradData = ((io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu) param.getGrad()).buffer;
                     for (int i = 0; i < gradData.length; i++) {

@@ -5,7 +5,7 @@ import io.leavesfly.tinyai.minimind.model.MiniMindModel;
 import io.leavesfly.tinyai.minimind.training.dpo.RLAIFDataset;
 import io.leavesfly.tinyai.ml.optimize.Adam;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -202,7 +202,7 @@ public class SPOTrainer {
         if (maxNorm <= 0) return;
         
         float totalNorm = 0.0f;
-        for (ParameterV1 param : model.getAllParams().values()) {
+        for (Parameter param : model.getAllParams().values()) {
             if (param.getGrad() != null) {
                 float[] gradData = ((io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu) param.getGrad()).buffer;
                 for (float g : gradData) {
@@ -215,7 +215,7 @@ public class SPOTrainer {
         
         if (totalNorm > maxNorm) {
             float scale = maxNorm / (totalNorm + 1e-6f);
-            for (ParameterV1 param : model.getAllParams().values()) {
+            for (Parameter param : model.getAllParams().values()) {
                 if (param.getGrad() != null) {
                     float[] gradData = ((io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu) param.getGrad()).buffer;
                     for (int i = 0; i < gradData.length; i++) {

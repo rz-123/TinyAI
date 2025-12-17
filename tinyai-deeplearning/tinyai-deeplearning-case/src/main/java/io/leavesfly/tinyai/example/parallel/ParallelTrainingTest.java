@@ -6,7 +6,9 @@ import io.leavesfly.tinyai.ml.evaluator.AccuracyEval;
 import io.leavesfly.tinyai.ml.loss.Classify;
 import io.leavesfly.tinyai.ml.loss.SoftmaxCrossEntropy;
 import io.leavesfly.tinyai.ml.optimize.Adam;
-import io.leavesfly.tinyai.nnet.v1.block.MlpBlock;
+import io.leavesfly.tinyai.nnet.v2.container.Sequential;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.ReLU;
 import io.leavesfly.tinyai.util.Config;
 
 /**
@@ -63,7 +65,12 @@ public class ParallelTrainingTest {
      * @return 创建的MLP模型
      */
     private static io.leavesfly.tinyai.ml.Model createModel(String name) {
-        MlpBlock mlpBlock = new MlpBlock(name, 32, Config.ActiveFunc.ReLU, 2, 16, 16, 3);
+        Sequential mlpBlock = new Sequential(name);
+        mlpBlock.add(new Linear("fc1", 2, 16, true));
+        mlpBlock.add(new ReLU("relu1"));
+        mlpBlock.add(new Linear("fc2", 16, 16, true));
+        mlpBlock.add(new ReLU("relu2"));
+        mlpBlock.add(new Linear("fc3", 16, 3, true));
 
         return new io.leavesfly.tinyai.ml.Model(name, mlpBlock);
     }

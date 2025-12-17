@@ -1,9 +1,10 @@
 package io.leavesfly.tinyai.lora;
 
+import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
-import io.leavesfly.tinyai.nnet.v1.layer.activate.ReLuLayer;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.ReLU;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,7 +23,7 @@ import java.util.Map;
  * @author leavesfly
  * @version 1.0
  */
-public class LoraModel extends Block {
+public class LoraModel extends Module {
 
     /**
      * LoRA配置
@@ -37,7 +38,7 @@ public class LoraModel extends Block {
     /**
      * 激活层列表
      */
-    private final List<ReLuLayer> activationLayers;
+    private final List<ReLU> activationLayers;
 
     /**
      * 模型架构配置
@@ -86,22 +87,43 @@ public class LoraModel extends Block {
             String layerName = String.format("lora_layer_%d", i);
             LoraLinearLayer loraLayer = new LoraLinearLayer(layerName, inputDim, outputDim, config, true);
             loraLayers.add(loraLayer);
-            addLayer(loraLayer);
+            registerModule(layerName, loraLayer);
 
             // 为除最后一层外的所有层添加ReLU激活函数
             // 或者如果指定了输出层也使用激活函数
             if (i < layerSizes.length - 2 || useOutputActivation) {
                 String activationName = String.format("relu_%d", i);
-                ReLuLayer activation = new ReLuLayer(activationName);
+                ReLU activation = new ReLU(activationName);
                 activationLayers.add(activation);
-                addLayer(activation);
+                registerModule(activationName, activation);
             }
         }
     }
 
     @Override
-    public void init() {
+    public void resetParameters() {
         // 层已在构造函数中初始化
+    }
+    
+    @Override
+    public Variable forward(Variable... inputs) {
+        Variable x = inputs[0];
+        
+        // 顺序执行所有层
+        int activationIdx = 0;
+        for (int i = 0; i < loraLayers.size(); i++) {
+            x = loraLayers.get(i).forward(x);
+            
+            // 如果有对应的激活层，则应用
+            if (i < loraLayers.size() - 1 || useOutputActivation) {
+                if (activationIdx < activationLayers.size()) {
+                    x = activationLayers.get(activationIdx).forward(x);
+                    activationIdx++;
+                }
+            }
+        }
+        
+        return x;
     }
 
     /**
@@ -215,8 +237,8 @@ public class LoraModel extends Block {
      *
      * @return LoRA参数映射
      */
-    public Map<String, ParameterV1> getAllLoraParameters() {
-        Map<String, ParameterV1> allLoraParams = new HashMap<>();
+    public Map<String, Parameter> getAllLoraParameters() {
+        Map<String, Parameter> allLoraParams = new HashMap<>();
         for (LoraLinearLayer layer : loraLayers) {
             allLoraParams.putAll(layer.getLoraParameters());
         }
@@ -312,9 +334,7 @@ public class LoraModel extends Block {
      */
     public void validateConfiguration() {
         for (LoraLinearLayer layer : loraLayers) {
-            int inputDim = layer.getInputShape().getDimension(1);
-            int outputDim = layer.getOutputShape().getDimension(1);
-            config.validate(inputDim, outputDim);
+            config.validate(layer.inputDim, layer.outputDim);
         }
     }
 

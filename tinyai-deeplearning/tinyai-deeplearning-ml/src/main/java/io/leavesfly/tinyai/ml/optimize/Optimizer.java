@@ -1,7 +1,7 @@
 package io.leavesfly.tinyai.ml.optimize;
 
 import io.leavesfly.tinyai.ml.Model;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.Map;
 
@@ -31,17 +31,17 @@ public abstract class Optimizer {
      * 更新所有参数
      */
     public void update() {
-        Map<String, ParameterV1> parameterMap = target.getAllParams();
-        for (ParameterV1 parameterV1 : parameterMap.values()) {
-            updateOne(parameterV1);
+        Map<String, Parameter> parameterMap = target.getAllParams();
+        for (Parameter parameter : parameterMap.values()) {
+            updateOne(parameter);
         }
     }
 
     /**
      * 更新单个参数
      *
-     * @param parameterV1 参数
+     * @param parameter 参数
      */
-    public abstract void updateOne(ParameterV1 parameterV1);
+    public abstract void updateOne(Parameter parameter);
 
 }

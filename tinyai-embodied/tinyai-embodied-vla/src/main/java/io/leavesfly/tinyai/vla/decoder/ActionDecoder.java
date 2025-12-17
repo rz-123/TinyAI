@@ -4,8 +4,8 @@ import io.leavesfly.tinyai.vla.model.ActionType;
 import io.leavesfly.tinyai.vla.model.VLAAction;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.func.Variable;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.layer.dnn.LinearLayer;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
 
 /**
  * 动作解码器
@@ -13,20 +13,20 @@ import io.leavesfly.tinyai.nnet.v1.layer.dnn.LinearLayer;
  * 
  * @author TinyAI
  */
-public class ActionDecoder extends Block {
+public class ActionDecoder extends Module {
     
     private final int hiddenDim;
     private final int continuousActionDim;
     private final int discreteActionNum;
     
     // 连续动作头
-    private LinearLayer continuousHead1;
-    private LinearLayer continuousHead2;
-    private LinearLayer continuousHead3;
+    private Linear continuousHead1;
+    private Linear continuousHead2;
+    private Linear continuousHead3;
     
     // 离散动作头
-    private LinearLayer discreteHead1;
-    private LinearLayer discreteHead2;
+    private Linear discreteHead1;
+    private Linear discreteHead2;
     
     /**
      * 构造函数
@@ -36,19 +36,19 @@ public class ActionDecoder extends Block {
      * @param discreteActionNum 离散动作数量
      */
     public ActionDecoder(int hiddenDim, int continuousActionDim, int discreteActionNum) {
-        super("ActionDecoder", null);
+        super("ActionDecoder");
         this.hiddenDim = hiddenDim;
         this.continuousActionDim = continuousActionDim;
         this.discreteActionNum = discreteActionNum;
         
         // 连续动作头：hiddenDim -> 512 -> 256 -> actionDim
-        this.continuousHead1 = new LinearLayer("continuous1", hiddenDim, 512, true);
-        this.continuousHead2 = new LinearLayer("continuous2", 512, 256, true);
-        this.continuousHead3 = new LinearLayer("continuous3", 256, continuousActionDim, true);
+        this.continuousHead1 = new Linear("continuous1", hiddenDim, 512, true);
+        this.continuousHead2 = new Linear("continuous2", 512, 256, true);
+        this.continuousHead3 = new Linear("continuous3", 256, continuousActionDim, true);
         
         // 离散动作头：hiddenDim -> 256 -> discreteActionNum
-        this.discreteHead1 = new LinearLayer("discrete1", hiddenDim, 256, true);
-        this.discreteHead2 = new LinearLayer("discrete2", 256, discreteActionNum, true);
+        this.discreteHead1 = new Linear("discrete1", hiddenDim, 256, true);
+        this.discreteHead2 = new Linear("discrete2", 256, discreteActionNum, true);
     }
     
     /**
@@ -70,19 +70,19 @@ public class ActionDecoder extends Block {
         Variable input = new Variable(aggregated);
         
         // 解码连续动作
-        Variable cont1 = continuousHead1.layerForward(input);
+        Variable cont1 = continuousHead1.forward(input);
         Variable contRelu1 = cont1.relu();
-        Variable cont2 = continuousHead2.layerForward(contRelu1);
+        Variable cont2 = continuousHead2.forward(contRelu1);
         Variable contRelu2 = cont2.relu();
-        Variable cont3 = continuousHead3.layerForward(contRelu2);
+        Variable cont3 = continuousHead3.forward(contRelu2);
         
         // Tanh激活，归一化到[-1, 1]
         NdArray continuousAction = tanh(cont3.getValue());
         
         // 解码离散动作
-        Variable disc1 = discreteHead1.layerForward(input);
+        Variable disc1 = discreteHead1.forward(input);
         Variable discRelu = disc1.relu();
-        Variable disc2 = discreteHead2.layerForward(discRelu);
+        Variable disc2 = discreteHead2.forward(discRelu);
         
         // Softmax得到概率分布
         NdArray discreteProbs = softmax(disc2.getValue());
@@ -177,14 +177,14 @@ public class ActionDecoder extends Block {
     }
     
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         // 简化接口
         VLAAction action = decode(inputs[0].getValue());
         return new Variable(action.getContinuousAction());
     }
     
     @Override
-    public void init() {
+    public void resetParameters() {
         // 初始化已在构造函数中完成
     }
 }

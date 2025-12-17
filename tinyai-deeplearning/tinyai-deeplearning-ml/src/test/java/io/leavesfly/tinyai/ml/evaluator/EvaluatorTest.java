@@ -8,7 +8,7 @@ import io.leavesfly.tinyai.ml.loss.Classify;
 import io.leavesfly.tinyai.ml.loss.Loss;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.Block;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -158,18 +158,22 @@ public class EvaluatorTest {
     /**
      * 测试用的 Block 实现
      */
-    private static class TestBlock extends Block implements java.io.Serializable {
+    private static class TestBlock extends Module implements java.io.Serializable {
 
         private static final long serialVersionUID = 1L;
 
         public TestBlock() {
-            super("TestBlock", Shape.of(1, 2));
+            super("TestBlock");
         }
 
         @Override
-        public void init() {
+        public void resetParameters() {
             // 简单初始化
-            alreadyInit = true;
+        }
+        
+        @Override
+        public Variable forward(Variable... inputs) {
+            return inputs[0];
         }
     }
 

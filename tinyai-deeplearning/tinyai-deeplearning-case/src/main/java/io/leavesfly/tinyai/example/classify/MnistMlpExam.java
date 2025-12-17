@@ -12,9 +12,9 @@ import io.leavesfly.tinyai.ml.loss.Loss;
 import io.leavesfly.tinyai.ml.loss.SoftmaxCrossEntropy;
 import io.leavesfly.tinyai.ml.optimize.Optimizer;
 import io.leavesfly.tinyai.ml.optimize.SGD;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.block.MlpBlock;
-import io.leavesfly.tinyai.util.Config;
+import io.leavesfly.tinyai.nnet.v2.container.Sequential;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.Sigmoid;
 
 /**
  * 手写数字识别示例
@@ -51,7 +51,12 @@ public class MnistMlpExam {
         float learRate = 0.1f;
 
         //===2,定义模型===
-        Block block = new MlpBlock("MlpBlock", batchSize, Config.ActiveFunc.Sigmoid, inputSize, hiddenSize1, hiddenSize2, outputSize);
+        Sequential block = new Sequential("MlpBlock");
+        block.add(new Linear("fc1", inputSize, hiddenSize1, true));
+        block.add(new Sigmoid("sigmoid1"));
+        block.add(new Linear("fc2", hiddenSize1, hiddenSize2, true));
+        block.add(new Sigmoid("sigmoid2"));
+        block.add(new Linear("fc3", hiddenSize2, outputSize, true));
         Model model = new Model("MnistMlpExam", block);
 
         DataSet mnistDataSet = new MnistDataSet(batchSize);

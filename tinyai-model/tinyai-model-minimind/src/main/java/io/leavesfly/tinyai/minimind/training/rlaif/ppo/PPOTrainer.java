@@ -6,7 +6,7 @@ import io.leavesfly.tinyai.minimind.training.dpo.RLAIFDataset;
 import io.leavesfly.tinyai.ml.optimize.Adam;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -303,7 +303,7 @@ public class PPOTrainer {
         float maxNorm = config.getMaxGradNorm();
         if (maxNorm <= 0) return;
         
-        Map<String, ParameterV1> params;
+        Map<String, Parameter> params;
         if (model instanceof MiniMindModel) {
             params = ((MiniMindModel) model).getAllParams();
         } else if (model instanceof ValueNetwork) {
@@ -314,7 +314,7 @@ public class PPOTrainer {
         }
         
         float totalNorm = 0.0f;
-        for (ParameterV1 param : params.values()) {
+        for (Parameter param : params.values()) {
             if (param.getGrad() != null) {
                 float[] gradData = ((io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu) param.getGrad()).buffer;
                 for (float g : gradData) {
@@ -327,7 +327,7 @@ public class PPOTrainer {
         
         if (totalNorm > maxNorm) {
             float scale = maxNorm / (totalNorm + 1e-6f);
-            for (ParameterV1 param : params.values()) {
+            for (Parameter param : params.values()) {
                 if (param.getGrad() != null) {
                     float[] gradData = ((io.leavesfly.tinyai.ndarr.cpu.NdArrayCpu) param.getGrad()).buffer;
                     for (int i = 0; i < gradData.length; i++) {

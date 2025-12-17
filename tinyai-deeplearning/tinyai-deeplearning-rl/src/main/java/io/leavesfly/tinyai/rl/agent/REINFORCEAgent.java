@@ -7,7 +7,9 @@ import io.leavesfly.tinyai.ml.optimize.Optimizer;
 import io.leavesfly.tinyai.rl.Agent;
 import io.leavesfly.tinyai.rl.Experience;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.block.MlpBlock;
+import io.leavesfly.tinyai.nnet.v2.container.Sequential;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.ReLU;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -99,46 +101,50 @@ public class REINFORCEAgent extends Agent {
      * @return 策略网络模型
      */
     private Model createPolicyNetwork(int stateDim, int actionDim, int[] hiddenSizes) {
-        // 构建网络层尺寸数组
-        int[] allSizes = new int[hiddenSizes.length + 2];
-        allSizes[0] = stateDim;
-        System.arraycopy(hiddenSizes, 0, allSizes, 1, hiddenSizes.length);
-        allSizes[allSizes.length - 1] = actionDim;
+        // 使用Sequential构建MLP网络
+        Sequential mlpModule = new Sequential(name + "_PolicyNetwork");
         
-        // 创建MLP网络
-        MlpBlock mlpBlock = new MlpBlock(
-            name + "_PolicyNetwork", 
-            1, // batchSize
-            null, // inputShape (will be set automatically)
-            allSizes
-        );
+        // 输入层
+        int inputSize = stateDim;
         
-        return new Model(name + "_PolicyModel", mlpBlock);
+        // 添加隐藏层
+        for (int hiddenSize : hiddenSizes) {
+            mlpModule.add(new Linear("fc", inputSize, hiddenSize, true));
+            mlpModule.add(new ReLU("relu"));
+            inputSize = hiddenSize;
+        }
+        
+        // 输出层 (动作概率分布)
+        mlpModule.add(new Linear("fc_out", inputSize, actionDim, true));
+        
+        return new Model(name + "_PolicyModel", mlpModule);
     }
     
     /**
      * 创建基线网络（价值函数）
      * 
      * @param stateDim 状态维度
-     * @param hiddenSizes 隐藏层尺寸
+     * @param hiddenSizes 隐藏层尼寸
      * @return 基线网络模型
      */
     private Model createBaselineNetwork(int stateDim, int[] hiddenSizes) {
-        // 构建网络层尺寸数组，输出为1（价值）
-        int[] allSizes = new int[hiddenSizes.length + 2];
-        allSizes[0] = stateDim;
-        System.arraycopy(hiddenSizes, 0, allSizes, 1, hiddenSizes.length);
-        allSizes[allSizes.length - 1] = 1; // 输出价值标量
+        // 使用Sequential构建MLP网络
+        Sequential mlpModule = new Sequential(name + "_BaselineNetwork");
         
-        // 创建MLP网络
-        MlpBlock mlpBlock = new MlpBlock(
-            name + "_BaselineNetwork", 
-            1, // batchSize
-            null, // inputShape (will be set automatically)
-            allSizes
-        );
+        // 输入层
+        int inputSize = stateDim;
         
-        return new Model(name + "_BaselineModel", mlpBlock);
+        // 添加隐藏层
+        for (int hiddenSize : hiddenSizes) {
+            mlpModule.add(new Linear("fc", inputSize, hiddenSize, true));
+            mlpModule.add(new ReLU("relu"));
+            inputSize = hiddenSize;
+        }
+        
+        // 输出层 (价值标量)
+        mlpModule.add(new Linear("fc_out", inputSize, 1, true));
+        
+        return new Model(name + "_BaselineModel", mlpModule);
     }
     
     @Override

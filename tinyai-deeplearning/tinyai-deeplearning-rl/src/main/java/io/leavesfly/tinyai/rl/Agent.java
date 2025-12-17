@@ -2,7 +2,7 @@ package io.leavesfly.tinyai.rl;
 
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.Model;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -119,7 +119,7 @@ public abstract class Agent {
      * 
      * @return 参数映射
      */
-    public Map<String, ParameterV1> getAllParams() {
+    public Map<String, Parameter> getAllParams() {
         if (model != null) {
             return model.getAllParams();
         }

@@ -99,7 +99,7 @@ public abstract class Module extends Function implements Serializable {
                 _buffers.containsKey(paramName) ||
                 _modules.containsKey(paramName)) {
             throw new IllegalArgumentException(
-                    "ParameterV1 name '" + paramName + "' conflicts with existing parameter, buffer or module");
+                    "Parameter name '" + paramName + "' conflicts with existing parameter, buffer or module");
         }
         _parameters.put(paramName, param);
         return param;

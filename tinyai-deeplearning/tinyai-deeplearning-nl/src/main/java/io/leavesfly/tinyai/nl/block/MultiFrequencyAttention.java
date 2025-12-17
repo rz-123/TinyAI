@@ -3,7 +3,7 @@ package io.leavesfly.tinyai.nl.block;
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ndarr.Shape;
 import io.leavesfly.tinyai.nl.core.AssociativeMemory;
-import io.leavesfly.tinyai.nnet.v1.Block;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
 
 /**
  * 多频率注意力块（MultiFrequencyAttention）
@@ -14,7 +14,7 @@ import io.leavesfly.tinyai.nnet.v1.Block;
  * 
  * @author TinyAI Team
  */
-public class MultiFrequencyAttention extends Block {
+public class MultiFrequencyAttention extends Module {
     
     /**
      * 不同频率的记忆模块
@@ -32,7 +32,7 @@ public class MultiFrequencyAttention extends Block {
     private int headDim;
     
     public MultiFrequencyAttention(String name, int numFrequencies, int headDim, Shape inputShape) {
-        super(name, inputShape);
+        super(name);
         this.numFrequencies = numFrequencies;
         this.headDim = headDim;
         this.frequencyMemories = new AssociativeMemory[numFrequencies];
@@ -48,12 +48,12 @@ public class MultiFrequencyAttention extends Block {
     }
     
     @Override
-    public void init() {
+    public void resetParameters() {
         // 初始化注意力参数
     }
     
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         if (inputs == null || inputs.length == 0) {
             return null;
         }

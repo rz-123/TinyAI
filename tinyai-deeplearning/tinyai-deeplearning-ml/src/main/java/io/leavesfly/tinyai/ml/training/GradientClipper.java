@@ -3,7 +3,7 @@ package io.leavesfly.tinyai.ml.training;
 import io.leavesfly.tinyai.ml.Model;
 import io.leavesfly.tinyai.ml.util.ValidationUtils;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.Map;
 
@@ -57,7 +57,7 @@ public class GradientClipper {
     public void clipGradients(Model model) {
         ValidationUtils.requireNonNull(model, "model");
         
-        Map<String, ParameterV1> params = model.getAllParams();
+        Map<String, Parameter> params = model.getAllParams();
         
         if (clipType == ClipType.NORM) {
             clipByNorm(params);
@@ -72,12 +72,12 @@ public class GradientClipper {
      * 
      * @param params 参数映射
      */
-    private void clipByNorm(Map<String, ParameterV1> params) {
+    private void clipByNorm(Map<String, Parameter> params) {
         // 计算总L2范数
         double totalNormSquared = 0.0;
         int paramCount = 0;
         
-        for (ParameterV1 param : params.values()) {
+        for (Parameter param : params.values()) {
             if (param != null && param.getGrad() != null) {
                 NdArray grad = param.getGrad();
                 float[] gradArray = grad.getArray();
@@ -99,7 +99,7 @@ public class GradientClipper {
         if (totalNorm > maxValue) {
             float clipCoeff = (float) (maxValue / (totalNorm + 1e-6));
             
-            for (ParameterV1 param : params.values()) {
+            for (Parameter param : params.values()) {
                 if (param != null && param.getGrad() != null) {
                     NdArray grad = param.getGrad();
                     // 缩放梯度
@@ -115,8 +115,8 @@ public class GradientClipper {
      * 
      * @param params 参数映射
      */
-    private void clipByValue(Map<String, ParameterV1> params) {
-        for (ParameterV1 param : params.values()) {
+    private void clipByValue(Map<String, Parameter> params) {
+        for (Parameter param : params.values()) {
             if (param != null && param.getGrad() != null) {
                 NdArray grad = param.getGrad();
                 float[] gradArray = grad.getArray();

@@ -46,7 +46,11 @@ public class DeepSeekR1Inference {
             NdArray logits = result.logits.getValue();
             
             int lastPos = currentSeq.length - 1;
-            int nextToken = argmax(logits, 0, lastPos);
+            int nextToken = argmaxSkipPad(logits, 0, lastPos);  // 跳过PAD token
+            
+            // 如果没有有效token可选，终止生成
+            if (nextToken < 0) break;
+            
             generated.add(nextToken);
             
             // 记录推理步骤
@@ -83,26 +87,33 @@ public class DeepSeekR1Inference {
             int lastPos = currentSeq.length - 1;
             int vocabSize = logits.getShape().getDimension(2);
             
-            // 应用温度
+            // 应用温度，跳过PAD token(id=0)
             float[] probs = new float[vocabSize];
             float maxLogit = Float.NEGATIVE_INFINITY;
-            for (int j = 0; j < vocabSize; j++) {
+            for (int j = 1; j < vocabSize; j++) {  // 从1开始，跳过PAD
                 float logit = logits.get(0, lastPos, j) / temperature;
                 probs[j] = logit;
                 maxLogit = Math.max(maxLogit, logit);
             }
+            probs[0] = Float.NEGATIVE_INFINITY;  // PAD概率设为0
             
             // Softmax
             float sum = 0.0f;
             for (int j = 0; j < vocabSize; j++) {
-                probs[j] = (float) Math.exp(probs[j] - maxLogit);
-                sum += probs[j];
+                if (j == 0) {
+                    probs[j] = 0.0f;  // PAD概率为0
+                } else {
+                    probs[j] = (float) Math.exp(probs[j] - maxLogit);
+                    sum += probs[j];
+                }
             }
-            for (int j = 0; j < vocabSize; j++) {
+            for (int j = 1; j < vocabSize; j++) {
                 probs[j] /= sum;
             }
             
-            int nextToken = sample(probs, random);
+            int nextToken = sampleSkipPad(probs, random);
+            if (nextToken <= 0) break;  // 没有有效token
+            
             generated.add(nextToken);
             
             reasoningSteps.add(new ReasoningStep(
@@ -155,6 +166,26 @@ public class DeepSeekR1Inference {
         return maxIdx;
     }
     
+    /**
+     * argmax但跳过PAD token(id=0)
+     * 返回-1表示没有有效token
+     */
+    private int argmaxSkipPad(NdArray logits, int batchIdx, int seqIdx) {
+        int vocabSize = logits.getShape().getDimension(2);
+        int maxIdx = -1;
+        float maxVal = Float.NEGATIVE_INFINITY;
+        
+        // 从1开始，跳过PAD token(id=0)
+        for (int i = 1; i < vocabSize; i++) {
+            float val = logits.get(batchIdx, seqIdx, i);
+            if (val > maxVal) {
+                maxVal = val;
+                maxIdx = i;
+            }
+        }
+        return maxIdx;
+    }
+    
     private int sample(float[] probs, Random random) {
         float r = random.nextFloat();
         float cumProb = 0.0f;
@@ -163,6 +194,22 @@ public class DeepSeekR1Inference {
             cumProb += probs[i];
             if (r < cumProb) return i;
         }
+        return probs.length - 1;
+    }
+    
+    /**
+     * 采样但跳过PAD token(id=0)
+     */
+    private int sampleSkipPad(float[] probs, Random random) {
+        float r = random.nextFloat();
+        float cumProb = 0.0f;
+        
+        // 从1开始，跳过PAD
+        for (int i = 1; i < probs.length; i++) {
+            cumProb += probs[i];
+            if (r < cumProb) return i;
+        }
+        // 返回最后一个非PAD token
         return probs.length - 1;
     }
     

@@ -4,8 +4,8 @@ import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ml.Model;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -25,7 +25,7 @@ import static org.junit.Assert.*;
 public class OptimizerTest {
 
     private TestModel testModel;
-    private ParameterV1 testParameterV1;
+    private Parameter testParameter;
 
     @Before
     public void setUp() {
@@ -35,10 +35,10 @@ public class OptimizerTest {
         NdArray value = NdArray.of(new float[][]{{1.0f, 2.0f}, {3.0f, 4.0f}});
         NdArray grad = NdArray.of(new float[][]{{0.1f, 0.2f}, {0.3f, 0.4f}});
         
-        testParameterV1 = new ParameterV1(value);
-        testParameterV1.setGrad(grad);
+        testParameter = new Parameter(value);
+        testParameter.setGrad(grad);
         
-        testModel.addParameter("test_param", testParameterV1);
+        testModel.addParameter("test_param", testParameter);
     }
 
     @Test
@@ -57,14 +57,14 @@ public class OptimizerTest {
         SGD sgd = new SGD(testModel, learningRate);
         
         // 保存更新前的值
-        float[][] originalValues = testParameterV1.getValue().getMatrix();
-        float[][] gradValues = testParameterV1.getGrad().getMatrix();
+        float[][] originalValues = testParameter.getValue().getMatrix();
+        float[][] gradValues = testParameter.getGrad().getMatrix();
         
         // 执行参数更新
-        sgd.updateOne(testParameterV1);
+        sgd.updateOne(testParameter);
         
         // 验证参数更新：value = value - lr * grad
-        float[][] updatedValues = testParameterV1.getValue().getMatrix();
+        float[][] updatedValues = testParameter.getValue().getMatrix();
         
         for (int i = 0; i < originalValues.length; i++) {
             for (int j = 0; j < originalValues[i].length; j++) {
@@ -81,19 +81,19 @@ public class OptimizerTest {
         SGD sgd = new SGD(testModel, learningRate);
         
         // 添加更多参数用于测试
-        ParameterV1 param2 = new ParameterV1(NdArray.of(new float[][]{{5.0f}}));
+        Parameter param2 = new Parameter(NdArray.of(new float[][]{{5.0f}}));
         param2.setGrad(NdArray.of(new float[][]{{0.5f}}));
         testModel.addParameter("param2", param2);
         
         // 保存原始值
-        float originalValue1 = testParameterV1.getValue().getMatrix()[0][0];
+        float originalValue1 = testParameter.getValue().getMatrix()[0][0];
         float originalValue2 = param2.getValue().getMatrix()[0][0];
         
         // 执行所有参数更新
         sgd.update();
         
         // 验证所有参数都被更新
-        assertNotEquals(originalValue1, testParameterV1.getValue().getMatrix()[0][0]);
+        assertNotEquals(originalValue1, testParameter.getValue().getMatrix()[0][0]);
         assertNotEquals(originalValue2, param2.getValue().getMatrix()[0][0]);
     }
 
@@ -114,13 +114,13 @@ public class OptimizerTest {
         Adam adam = new Adam(testModel, 0.001f, 0.9f, 0.999f, 1e-8f);
         
         // 保存更新前的值
-        float[][] originalValues = testParameterV1.getValue().getMatrix();
+        float[][] originalValues = testParameter.getValue().getMatrix();
         
         // 执行参数更新（需要调用update来增加时间步）
         adam.update();
         
         // 验证参数已被更新
-        float[][] updatedValues = testParameterV1.getValue().getMatrix();
+        float[][] updatedValues = testParameter.getValue().getMatrix();
         
         boolean hasChanged = false;
         for (int i = 0; i < originalValues.length; i++) {
@@ -140,7 +140,7 @@ public class OptimizerTest {
         Adam adam = new Adam(testModel, 0.01f, 0.9f, 0.999f, 1e-8f);
         
         // 记录初始值
-        float initialValue = testParameterV1.getValue().getMatrix()[0][0];
+        float initialValue = testParameter.getValue().getMatrix()[0][0];
         
         // 执行多次更新
         for (int i = 0; i < 5; i++) {
@@ -148,7 +148,7 @@ public class OptimizerTest {
         }
         
         // 验证参数持续更新
-        float finalValue = testParameterV1.getValue().getMatrix()[0][0];
+        float finalValue = testParameter.getValue().getMatrix()[0][0];
         assertNotEquals("多次更新后参数应该改变", initialValue, finalValue);
     }
 
@@ -159,14 +159,14 @@ public class OptimizerTest {
         
         // 第一次更新
         adam.update();
-        float valueAfterFirst = testParameterV1.getValue().getMatrix()[0][0];
+        float valueAfterFirst = testParameter.getValue().getMatrix()[0][0];
         
         // 改变梯度
-        testParameterV1.setGrad(NdArray.of(new float[][]{{0.2f, 0.4f}, {0.6f, 0.8f}}));
+        testParameter.setGrad(NdArray.of(new float[][]{{0.2f, 0.4f}, {0.6f, 0.8f}}));
         
         // 第二次更新
         adam.update();
-        float valueAfterSecond = testParameterV1.getValue().getMatrix()[0][0];
+        float valueAfterSecond = testParameter.getValue().getMatrix()[0][0];
         
         // 验证更新有效
         assertNotEquals("第二次更新应该改变参数", valueAfterFirst, valueAfterSecond);
@@ -177,7 +177,7 @@ public class OptimizerTest {
         // 测试 Optimizer 抽象类的基本功能
         Optimizer customOptimizer = new Optimizer(testModel) {
             @Override
-            public void updateOne(ParameterV1 parameter) {
+            public void updateOne(Parameter parameter) {
                 // 自定义更新：简单地将参数设为0
                 NdArray zeros = NdArray.zeros(parameter.getValue().getShape());
                 parameter.setValue(zeros);
@@ -185,13 +185,13 @@ public class OptimizerTest {
         };
         
         // 验证参数不为0
-        assertNotEquals(0.0f, testParameterV1.getValue().getMatrix()[0][0]);
+        assertNotEquals(0.0f, testParameter.getValue().getMatrix()[0][0]);
         
         // 执行自定义更新
         customOptimizer.update();
         
         // 验证参数被设为0
-        assertEquals(0.0f, testParameterV1.getValue().getMatrix()[0][0], 1e-9f);
+        assertEquals(0.0f, testParameter.getValue().getMatrix()[0][0], 1e-9f);
     }
 
     @Test
@@ -199,10 +199,10 @@ public class OptimizerTest {
         // 比较不同优化器的性能特征
         
         // 创建相同的初始参数
-        ParameterV1 sgdParam = new ParameterV1(NdArray.of(new float[][]{{1.0f}}));
+        Parameter sgdParam = new Parameter(NdArray.of(new float[][]{{1.0f}}));
         sgdParam.setGrad(NdArray.of(new float[][]{{0.1f}}));
         
-        ParameterV1 adamParam = new ParameterV1(NdArray.of(new float[][]{{1.0f}}));
+        Parameter adamParam = new Parameter(NdArray.of(new float[][]{{1.0f}}));
         adamParam.setGrad(NdArray.of(new float[][]{{0.1f}}));
         
         TestModel sgdModel = new TestModel();
@@ -232,16 +232,20 @@ public class OptimizerTest {
     /**
      * 测试用的 Block 实现
      */
-    private static class TestBlock extends Block {
+    private static class TestBlock extends Module {
         
         public TestBlock() {
-            super("TestBlock", Shape.of(2, 2));
+            super("TestBlock");
         }
         
         @Override
-        public void init() {
+        public void resetParameters() {
             // 简单初始化
-            alreadyInit = true;
+        }
+        
+        @Override
+        public Variable forward(Variable... inputs) {
+            return inputs[0];
         }
     }
 
@@ -250,7 +254,7 @@ public class OptimizerTest {
      */
     private static class TestModel extends Model {
         
-        private Map<String, ParameterV1> parameters = new HashMap<>();
+        private Map<String, Parameter> parameters = new HashMap<>();
 
         public TestModel() {
             super("TestModel", new TestBlock());
@@ -260,12 +264,12 @@ public class OptimizerTest {
             return x; // 简单返回输入
         }
 
-        public void addParameter(String name, ParameterV1 parameterV1) {
+        public void addParameter(String name, Parameter parameterV1) {
             parameters.put(name, parameterV1);
         }
 
         @Override
-        public Map<String, ParameterV1> getAllParams() {
+        public Map<String, Parameter> getAllParams() {
             return parameters;
         }
     }

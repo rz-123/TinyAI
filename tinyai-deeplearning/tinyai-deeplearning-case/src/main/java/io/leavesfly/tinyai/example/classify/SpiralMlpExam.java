@@ -18,9 +18,9 @@ import io.leavesfly.tinyai.ml.optimize.Optimizer;
 import io.leavesfly.tinyai.ml.optimize.SGD;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.block.MlpBlock;
-
+import io.leavesfly.tinyai.nnet.v2.container.Sequential;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.ReLU;
 
 import java.util.List;
 
@@ -56,13 +56,18 @@ public class SpiralMlpExam {
         int maxEpoch = 300;
         int batchSize = 10;
 
-        float learRate = 1.0f;
+        float learRate = 0.1f;
 
         int inputSize = 2;
         int hiddenSize = 30;
         int outputSize = 3;
 
-        Block block = new MlpBlock("MlpBlock", batchSize, null, inputSize, hiddenSize, hiddenSize, outputSize);
+        Sequential block = new Sequential("MlpBlock");
+        block.add(new Linear("fc1", inputSize, hiddenSize, true));
+        block.add(new ReLU("relu1"));
+        block.add(new Linear("fc2", hiddenSize, hiddenSize, true));
+        block.add(new ReLU("relu2"));
+        block.add(new Linear("fc3", hiddenSize, outputSize, true));
         Model model = new Model("SpiralMlpExam", block);
 
         ArrayDataset dataSet = new SpiralDateSet(batchSize);
@@ -94,14 +99,19 @@ public class SpiralMlpExam {
         int hiddenSize = 30;
         int outputSize = 3;
 
-        float learRate = 1.0f;
+        float learRate = 0.1f;
 
         ArrayDataset dataSet = new SpiralDateSet(batchSize);
         dataSet.prepare();
         dataSet.shuffle();
         List<Batch> batches = dataSet.getBatches();
 
-        Block block = new MlpBlock("MlpBlock", batchSize, null, inputSize, hiddenSize, hiddenSize, outputSize);
+        Sequential block = new Sequential("MlpBlock");
+        block.add(new Linear("fc1", inputSize, hiddenSize, true));
+        block.add(new ReLU("relu1"));
+        block.add(new Linear("fc2", hiddenSize, hiddenSize, true));
+        block.add(new ReLU("relu2"));
+        block.add(new Linear("fc3", hiddenSize, outputSize, true));
         Model model = new Model("SpiralMlpExam", block);
 
         Optimizer optimizer = new SGD(model, learRate);

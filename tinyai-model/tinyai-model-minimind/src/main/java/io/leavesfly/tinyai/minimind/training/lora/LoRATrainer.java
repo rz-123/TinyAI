@@ -6,7 +6,7 @@ import io.leavesfly.tinyai.minimind.training.dataset.SFTDataset;
 import io.leavesfly.tinyai.ml.loss.MaskedSoftmaxCELoss;
 import io.leavesfly.tinyai.ml.optimize.Adam;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.io.File;
 import java.io.IOException;
@@ -100,7 +100,7 @@ public class LoRATrainer {
         // 存在LoRA参数时,冻结非LoRA参数
         for (var entry : model.getAllParams().entrySet()) {
             String paramName = entry.getKey();
-            ParameterV1 param = entry.getValue();
+            Parameter param = entry.getValue();
             
             if (!paramName.toLowerCase().contains("lora")) {
                 param.clearGrad();
@@ -239,7 +239,7 @@ public class LoRATrainer {
         
         // 计算所有可训练参数的梯度范数
         for (var entry : model.getAllParams().entrySet()) {
-            ParameterV1 param = entry.getValue();
+            Parameter param = entry.getValue();
             
             if (param.getGrad() != null) {
                 NdArray grad = param.getGrad();
@@ -258,7 +258,7 @@ public class LoRATrainer {
             float clipCoef = maxGradNorm / (float) totalNorm;
             
             for (var entry : model.getAllParams().entrySet()) {
-                ParameterV1 param = entry.getValue();
+                Parameter param = entry.getValue();
                 
                 if (param.getGrad() != null) {
                     NdArray grad = param.getGrad();
@@ -311,7 +311,7 @@ public class LoRATrainer {
         
         for (var entry : model.getAllParams().entrySet()) {
             String paramName = entry.getKey();
-            ParameterV1 param = entry.getValue();
+            Parameter param = entry.getValue();
             int paramCount = param.getValue().getShape().size();
             
             totalParams += paramCount;

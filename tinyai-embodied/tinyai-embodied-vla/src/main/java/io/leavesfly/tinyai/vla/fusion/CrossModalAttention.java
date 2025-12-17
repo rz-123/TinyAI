@@ -2,8 +2,8 @@ package io.leavesfly.tinyai.vla.fusion;
 
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.func.Variable;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.layer.dnn.LinearLayer;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
 
 /**
  * 跨模态注意力机制
@@ -11,17 +11,17 @@ import io.leavesfly.tinyai.nnet.v1.layer.dnn.LinearLayer;
  * 
  * @author TinyAI
  */
-public class CrossModalAttention extends Block {
+public class CrossModalAttention extends Module {
     
     private final int hiddenDim;
     private final int numHeads;
     private final int headDim;
     
     // Query, Key, Value投影层
-    private LinearLayer qProj;
-    private LinearLayer kProj;
-    private LinearLayer vProj;
-    private LinearLayer outProj;
+    private Linear qProj;
+    private Linear kProj;
+    private Linear vProj;
+    private Linear outProj;
     
     /**
      * 构造函数
@@ -30,20 +30,20 @@ public class CrossModalAttention extends Block {
      * @param numHeads 注意力头数
      */
     public CrossModalAttention(int hiddenDim, int numHeads) {
-        super("CrossModalAttention", null);
+        super("CrossModalAttention");
         this.hiddenDim = hiddenDim;
         this.numHeads = numHeads;
         this.headDim = hiddenDim / numHeads;
         
         // 初始化投影层
-        this.qProj = new LinearLayer("qProj", hiddenDim, hiddenDim, false);
-        this.kProj = new LinearLayer("kProj", hiddenDim, hiddenDim, false);
-        this.vProj = new LinearLayer("vProj", hiddenDim, hiddenDim, false);
-        this.outProj = new LinearLayer("outProj", hiddenDim, hiddenDim, false);
+        this.qProj = new Linear("qProj", hiddenDim, hiddenDim, false);
+        this.kProj = new Linear("kProj", hiddenDim, hiddenDim, false);
+        this.vProj = new Linear("vProj", hiddenDim, hiddenDim, false);
+        this.outProj = new Linear("outProj", hiddenDim, hiddenDim, false);
     }
     
     @Override
-    public void init() {
+    public void resetParameters() {
         // 初始化已在构造函数中完成
     }
     
@@ -56,9 +56,9 @@ public class CrossModalAttention extends Block {
      */
     public Variable computeAttention(Variable query, Variable keyValue) {
         // 投影Q, K, V
-        Variable q = qProj.layerForward(query);
-        Variable k = kProj.layerForward(keyValue);
-        Variable v = vProj.layerForward(keyValue);
+        Variable q = qProj.forward(query);
+        Variable k = kProj.forward(keyValue);
+        Variable v = vProj.forward(keyValue);
         
         // 获取维度
         NdArray qData = q.getValue();
@@ -99,7 +99,7 @@ public class CrossModalAttention extends Block {
         
         // 输出投彡
         NdArray outputArray = NdArray.of(output);
-        Variable result = outProj.layerForward(new Variable(outputArray));
+        Variable result = outProj.forward(new Variable(outputArray));
         
         return result;
     }
@@ -136,7 +136,7 @@ public class CrossModalAttention extends Block {
     }
     
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         // 默认实现：自注意力
         return computeAttention(inputs[0], inputs[0]);
     }

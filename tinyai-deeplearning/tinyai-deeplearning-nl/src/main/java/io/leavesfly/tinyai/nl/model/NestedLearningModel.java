@@ -29,7 +29,7 @@ public class NestedLearningModel {
             return null;
         }
         
-        Variable output = block.layerForward(inputs);
+        Variable output = block.forward(inputs);
         
         // 更新层级状态
         block.updateLevels();

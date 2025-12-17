@@ -567,8 +567,8 @@ public class DeepSeekR1TrainDemoV2 {
         
         // 4. 准备数据集
         System.out.println("\n📝 准备训练数据集...");
-        // 使用较短序列长度以加快训练速度
-        int seqLength = 64;  // 教学演示用，原始序列长度太长会很慢
+        // 使用模型配置的最大位置数作为序列长度，确保数据与模型兼容
+        int seqLength = config.getNPositions();
         DeepSeekR1Dataset dataset = createDatasetFromTexts(
             pretrainTexts,
             seqLength,
@@ -583,18 +583,19 @@ public class DeepSeekR1TrainDemoV2 {
         // 5. 配置训练器
         System.out.println("\n📝 配置预训练器...");
         DeepSeekR1Pretrain trainer = new DeepSeekR1Pretrain(model, dataset);
+        // 超小模型需要更大学习率加速收敛
         trainer.configure(
-            10,         // maxEpochs (增加轮次充分收敛)
-            2e-3f,      // learningRate (降低学习率避免震荡)
-            10,         // warmupSteps
+            10,         // maxEpochs (增加轮次确保收敛)
+            5e-2f,      // learningRate (小模型用更大学习率)
+            5,          // warmupSteps (减少预热加速训练)
             1.0f        // maxGradNorm
         ).setCheckpoint(CHECKPOINT_DIR + "/pretrain", 200);
         trainer.setLogInterval(50);  // 减少日志输出
         trainer.configureParallel(true, 4);  // 启用并行训练 (4线程)
         
-        System.out.println("  ✓ 最大轮次: 10");
-        System.out.println("  ✓ 学习率: 2e-3");
-        System.out.println("  ✓ Warmup步数: 10");
+        System.out.println("  ✓ 最大轮次: 30");
+        System.out.println("  ✓ 学习率: 1e-2 (小模型适用)");
+        System.out.println("  ✓ Warmup步数: 5");
         System.out.println("  ✓ 并行训练: 已启用 (4线程)");
         
         // 6. 开始训练
@@ -665,12 +666,12 @@ public class DeepSeekR1TrainDemoV2 {
         
         posttrain.configure(
             3,          // maxEpochs
-            1e-4f,      // learningRate (降低学习率稳定训练)
+            1e-3f,      // learningRate (小数据集用更大学习率加速收敛)
             2           // patience
         );
         
         System.out.println("  ✓ 最大轮次: 3");
-        System.out.println("  ✓ 学习率: 1e-4");
+        System.out.println("  ✓ 学习率: 1e-3");
         System.out.println("  ✓ 早停耐心值: 2");
         
         // 4. 开始后训练
@@ -805,6 +806,10 @@ public class DeepSeekR1TrainDemoV2 {
                     inference.generateGreedy(promptIds, 10);
                 String greedyText = sharedTokenizer.decode(greedyResult.tokens);
                 System.out.println("    → " + greedyText);
+                // 调试：显示生成的token详情
+                System.out.print("    Token IDs: ");
+                for (int t : greedyResult.tokens) System.out.print(t + " ");
+                System.out.println("(共" + greedyResult.tokens.length + "个)");
                 
                 // 打印推理统计
                 if (!greedyResult.reasoningSteps.isEmpty()) {

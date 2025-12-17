@@ -5,7 +5,7 @@ import io.leavesfly.tinyai.ml.parameter.ParameterOperator;
 import io.leavesfly.tinyai.ml.util.ValidationUtils;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.io.*;
 import java.util.HashMap;
@@ -31,7 +31,7 @@ public class ParameterManager {
      * @param parameters 参数映射
      * @param filePath   保存路径
      */
-    public static void saveParameters(Map<String, ParameterV1> parameters, String filePath) {
+    public static void saveParameters(Map<String, Parameter> parameters, String filePath) {
         try {
             File file = new File(filePath);
             if (file.getParentFile() != null && !file.getParentFile().exists()) {
@@ -54,7 +54,7 @@ public class ParameterManager {
      * @return 参数映射
      */
     @SuppressWarnings("unchecked")
-    public static Map<String, ParameterV1> loadParameters(String filePath) {
+    public static Map<String, Parameter> loadParameters(String filePath) {
         try {
             File file = new File(filePath);
             if (!file.exists()) {
@@ -63,7 +63,7 @@ public class ParameterManager {
 
             try (FileInputStream fis = new FileInputStream(file);
                  ObjectInputStream ois = new ObjectInputStream(fis)) {
-                return (Map<String, ParameterV1>) ois.readObject();
+                return (Map<String, Parameter>) ois.readObject();
             }
         } catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException("Failed to load parameters: " + e.getMessage(), e);
@@ -85,18 +85,18 @@ public class ParameterManager {
         ValidationUtils.requireNonNull(sourceModel, "sourceModel");
         ValidationUtils.requireNonNull(targetModel, "targetModel");
 
-        Map<String, ParameterV1> sourceParams = sourceModel.getAllParams();
-        Map<String, ParameterV1> targetParams = targetModel.getAllParams();
+        Map<String, Parameter> sourceParams = sourceModel.getAllParams();
+        Map<String, Parameter> targetParams = targetModel.getAllParams();
         
         int copiedCount = 0;
         int skippedCount = 0;
         
-        for (Map.Entry<String, ParameterV1> sourceEntry : sourceParams.entrySet()) {
+        for (Map.Entry<String, Parameter> sourceEntry : sourceParams.entrySet()) {
             String paramName = sourceEntry.getKey();
-            ParameterV1 sourceParam = sourceEntry.getValue();
+            Parameter sourceParam = sourceEntry.getValue();
             
             if (targetParams.containsKey(paramName)) {
-                ParameterV1 targetParam = targetParams.get(paramName);
+                Parameter targetParam = targetParams.get(paramName);
                 
                 try {
                     // 使用统一的参数复制接口（支持任意维度）
@@ -163,8 +163,8 @@ public class ParameterManager {
             return false;
         }
 
-        Map<String, ParameterV1> params1 = model1.getAllParams();
-        Map<String, ParameterV1> params2 = model2.getAllParams();
+        Map<String, Parameter> params1 = model1.getAllParams();
+        Map<String, Parameter> params2 = model2.getAllParams();
 
         // 检查参数数量是否相同
         if (params1.size() != params2.size()) {
@@ -172,15 +172,15 @@ public class ParameterManager {
         }
 
         // 使用统一的参数比较接口（支持任意维度）
-        for (Map.Entry<String, ParameterV1> entry : params1.entrySet()) {
+        for (Map.Entry<String, Parameter> entry : params1.entrySet()) {
             String paramName = entry.getKey();
-            ParameterV1 param1 = entry.getValue();
+            Parameter param1 = entry.getValue();
 
             if (!params2.containsKey(paramName)) {
                 return false;
             }
 
-            ParameterV1 param2 = params2.get(paramName);
+            Parameter param2 = params2.get(paramName);
             
             // 使用统一的参数比较方法
             if (!ParameterOperator.compareParameter(param1, param2, tolerance)) {
@@ -208,7 +208,7 @@ public class ParameterManager {
      * @param parameters 参数映射
      * @return 统计信息
      */
-    public static ParameterStats getParameterStats(Map<String, ParameterV1> parameters) {
+    public static ParameterStats getParameterStats(Map<String, Parameter> parameters) {
         if (parameters == null || parameters.isEmpty()) {
             return new ParameterStats();
         }
@@ -216,8 +216,8 @@ public class ParameterManager {
         ParameterStats stats = new ParameterStats();
         stats.parameterCount = parameters.size();
         
-        for (Map.Entry<String, ParameterV1> entry : parameters.entrySet()) {
-            ParameterV1 param = entry.getValue();
+        for (Map.Entry<String, Parameter> entry : parameters.entrySet()) {
+            Parameter param = entry.getValue();
             Shape shape = param.getValue().getShape();
             long paramSize = shape.size();
             stats.totalParameters += paramSize;
@@ -270,16 +270,16 @@ public class ParameterManager {
      * @param original 原始参数映射
      * @return 深拷贝的参数映射
      */
-    public static Map<String, ParameterV1> deepCopyParameters(Map<String, ParameterV1> original) {
+    public static Map<String, Parameter> deepCopyParameters(Map<String, Parameter> original) {
         if (original == null) {
             return null;
         }
         
-        Map<String, ParameterV1> copy = new HashMap<>();
+        Map<String, Parameter> copy = new HashMap<>();
         
-        for (Map.Entry<String, ParameterV1> entry : original.entrySet()) {
+        for (Map.Entry<String, Parameter> entry : original.entrySet()) {
             String paramName = entry.getKey();
-            ParameterV1 originalParam = entry.getValue();
+            Parameter originalParam = entry.getValue();
             
             try {
                 // 创建新的NdArray拷贝
@@ -289,7 +289,7 @@ public class ParameterManager {
                     // 标量参数
                     float value = originalParam.getValue().getNumber().floatValue();
                     NdArray newArray = NdArray.of(value);
-                    copy.put(paramName, new ParameterV1(newArray));
+                    copy.put(paramName, new Parameter(newArray));
                 } else {
                     // 矩阵参数
                     float[][] matrix = originalParam.getValue().getMatrix();
@@ -302,7 +302,7 @@ public class ParameterManager {
                     
                     // 创建新的NdArray
                     NdArray newArray = NdArray.of(newMatrix);
-                    copy.put(paramName, new ParameterV1(newArray));
+                    copy.put(paramName, new Parameter(newArray));
                 }
             } catch (Exception e) {
                 // 如果拷贝失败，记录错误但继续处理其他参数
@@ -317,7 +317,7 @@ public class ParameterManager {
                     
                     ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
                     ObjectInputStream ois = new ObjectInputStream(bis);
-                    ParameterV1 clonedParam = (ParameterV1) ois.readObject();
+                    Parameter clonedParam = (Parameter) ois.readObject();
                     ois.close();
                     
                     copy.put(paramName, clonedParam);
@@ -337,13 +337,13 @@ public class ParameterManager {
      * @param namePattern 名称模式（支持通配符*）
      * @return 筛选后的参数映射
      */
-    public static Map<String, ParameterV1> filterParameters(Map<String, ParameterV1> parameters, String namePattern) {
-        Map<String, ParameterV1> filtered = new HashMap<>();
+    public static Map<String, Parameter> filterParameters(Map<String, Parameter> parameters, String namePattern) {
+        Map<String, Parameter> filtered = new HashMap<>();
 
         // 将通配符模式转换为正则表达式
         String regex = namePattern.replace("*", ".*");
 
-        for (Map.Entry<String, ParameterV1> entry : parameters.entrySet()) {
+        for (Map.Entry<String, Parameter> entry : parameters.entrySet()) {
             if (entry.getKey().matches(regex)) {
                 filtered.put(entry.getKey(), entry.getValue());
             }
@@ -383,7 +383,7 @@ public class ParameterManager {
      * @param parameters 参数映射
      * @param filePath   文件路径
      */
-    public static void saveParameterStats(Map<String, ParameterV1> parameters, String filePath) {
+    public static void saveParameterStats(Map<String, Parameter> parameters, String filePath) {
         try (PrintWriter writer = new PrintWriter(new FileWriter(filePath))) {
             ParameterStats stats = getParameterStats(parameters);
 
@@ -396,9 +396,9 @@ public class ParameterManager {
             writer.println();
 
             writer.println("=== 参数详细信息 ===");
-            for (Map.Entry<String, ParameterV1> entry : parameters.entrySet()) {
+            for (Map.Entry<String, Parameter> entry : parameters.entrySet()) {
                 String name = entry.getKey();
-                ParameterV1 param = entry.getValue();
+                Parameter param = entry.getValue();
                 Shape shape = param.getValue().getShape();
 
                 writer.println(String.format("%-40s %s (%d个参数)",

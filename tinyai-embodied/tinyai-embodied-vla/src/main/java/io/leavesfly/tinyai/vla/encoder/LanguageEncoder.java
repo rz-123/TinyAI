@@ -4,10 +4,10 @@ import io.leavesfly.tinyai.vla.model.LanguageInput;
 import io.leavesfly.tinyai.vla.utils.Tokenizer;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.func.Variable;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.layer.dnn.LinearLayer;
-import io.leavesfly.tinyai.nnet.v1.layer.embedd.Embedding;
-import io.leavesfly.tinyai.nnet.v1.layer.norm.LayerNorm;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.embedding.Embedding;
+import io.leavesfly.tinyai.nnet.v2.layer.norm.LayerNorm;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +19,7 @@ import java.util.List;
  * 
  * @author TinyAI
  */
-public class LanguageEncoder extends Block {
+public class LanguageEncoder extends Module {
     
     private final int vocabSize;
     private final int hiddenDim;
@@ -50,7 +50,7 @@ public class LanguageEncoder extends Block {
      * @param numLayers Transformer层数
      */
     public LanguageEncoder(int vocabSize, int hiddenDim, int maxSeqLen, int numLayers) {
-        super("LanguageEncoder", null);
+        super("LanguageEncoder");
         this.vocabSize = vocabSize;
         this.hiddenDim = hiddenDim;
         this.maxSeqLen = maxSeqLen;
@@ -76,7 +76,7 @@ public class LanguageEncoder extends Block {
     }
     
     @Override
-    public void init() {
+    public void resetParameters() {
         // 初始化已在构造函数中完成
     }
     
@@ -101,7 +101,7 @@ public class LanguageEncoder extends Block {
         NdArray tokenIdsArray = NdArray.of(tokenIdsDouble).reshape(io.leavesfly.tinyai.ndarr.Shape.of(seqLen, 1));
         
         // Token嵌入
-        Variable tokenEmbedVar = tokenEmbedding.layerForward(new Variable(tokenIdsArray));
+        Variable tokenEmbedVar = tokenEmbedding.forward(new Variable(tokenIdsArray));
         NdArray tokenEmbed = tokenEmbedVar.getValue();
         
         // 添加位置嵌入
@@ -111,11 +111,11 @@ public class LanguageEncoder extends Block {
         // 通过Transformer层
         Variable hidden = new Variable(embeddings);
         for (TransformerEncoderLayer layer : transformerLayers) {
-            hidden = layer.layerForward(hidden);
+            hidden = layer.forward(hidden);
         }
         
         // 最终层归一化
-        Variable output = layerNorm.layerForward(hidden);
+        Variable output = layerNorm.forward(hidden);
         
         // 保存到languageInput
         languageInput.setTokenIds(tokenIdsArray);
@@ -159,7 +159,7 @@ public class LanguageEncoder extends Block {
     }
     
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         // 简化的前向传播接口
         // 假设 input是token IDs
         LanguageInput languageInput = new LanguageInput("dummy");
@@ -172,37 +172,37 @@ public class LanguageEncoder extends Block {
     /**
      * 简化的Transformer编码器层
      */
-    private static class TransformerEncoderLayer extends Block {
+    private static class TransformerEncoderLayer extends Module {
         private final int hiddenDim;
         private final int numHeads;
         
-        private LinearLayer qProj;
-        private LinearLayer kProj;
-        private LinearLayer vProj;
-        private LinearLayer outProj;
+        private Linear qProj;
+        private Linear kProj;
+        private Linear vProj;
+        private Linear outProj;
         
-        private LinearLayer ffn1;
-        private LinearLayer ffn2;
+        private Linear ffn1;
+        private Linear ffn2;
         
         private LayerNorm norm1;
         private LayerNorm norm2;
         
         public TransformerEncoderLayer(int hiddenDim, int numHeads) {
-            super("TransformerEncoderBlock", null);
+            super("TransformerEncoderBlock");
             this.hiddenDim = hiddenDim;
             this.numHeads = numHeads;
             
             int headDim = hiddenDim / numHeads;
             
             // 多头注意力投影
-            this.qProj = new LinearLayer("qProj", hiddenDim, hiddenDim, false);
-            this.kProj = new LinearLayer("kProj", hiddenDim, hiddenDim, false);
-            this.vProj = new LinearLayer("vProj", hiddenDim, hiddenDim, false);
-            this.outProj = new LinearLayer("outProj", hiddenDim, hiddenDim, false);
+            this.qProj = new Linear("qProj", hiddenDim, hiddenDim, false);
+            this.kProj = new Linear("kProj", hiddenDim, hiddenDim, false);
+            this.vProj = new Linear("vProj", hiddenDim, hiddenDim, false);
+            this.outProj = new Linear("outProj", hiddenDim, hiddenDim, false);
             
             // 前馈网络
-            this.ffn1 = new LinearLayer("ffn1", hiddenDim, hiddenDim * 4, true);
-            this.ffn2 = new LinearLayer("ffn2", hiddenDim * 4, hiddenDim, true);
+            this.ffn1 = new Linear("ffn1", hiddenDim, hiddenDim * 4, true);
+            this.ffn2 = new Linear("ffn2", hiddenDim * 4, hiddenDim, true);
             
             // 层归一化
             this.norm1 = new LayerNorm("norm1", hiddenDim);
@@ -210,23 +210,23 @@ public class LanguageEncoder extends Block {
         }
         
         @Override
-        public void init() {
+        public void resetParameters() {
             // 初始化已在构造函数中完成
         }
         
         @Override
-        public Variable layerForward(Variable... inputs) {
+        public Variable forward(Variable... inputs) {
             Variable input = inputs[0];
             // 自注意力 + 残差连接
-            Variable normed1 = norm1.layerForward(input);
+            Variable normed1 = norm1.forward(input);
             Variable attnOut = selfAttention(normed1);
             Variable residual1 = new Variable(input.getValue().add(attnOut.getValue()));
             
             // 前馈网络 + 残差连接
-            Variable normed2 = norm2.layerForward(residual1);
-            Variable ffn1Out = ffn1.layerForward(normed2);
+            Variable normed2 = norm2.forward(residual1);
+            Variable ffn1Out = ffn1.forward(normed2);
             Variable reluOut = ffn1Out.relu();
-            Variable ffn2Out = ffn2.layerForward(reluOut);
+            Variable ffn2Out = ffn2.forward(reluOut);
             Variable residual2 = new Variable(residual1.getValue().add(ffn2Out.getValue()));
             
             return residual2;
@@ -234,9 +234,9 @@ public class LanguageEncoder extends Block {
         
         private Variable selfAttention(Variable input) {
             // 简化的自注意力实现
-            Variable q = qProj.layerForward(input);
-            Variable k = kProj.layerForward(input);
-            Variable v = vProj.layerForward(input);
+            Variable q = qProj.forward(input);
+            Variable k = kProj.forward(input);
+            Variable v = vProj.forward(input);
             
             // 计算注意力分数（简化版）
             // scores = q @ k^T / sqrt(d_k)
@@ -248,7 +248,7 @@ public class LanguageEncoder extends Block {
             int dim = qData.getShape().getDimension(1);
             
             // 简化：直接返回value的线性变换
-            Variable output = outProj.layerForward(v);
+            Variable output = outProj.forward(v);
             
             return output;
         }

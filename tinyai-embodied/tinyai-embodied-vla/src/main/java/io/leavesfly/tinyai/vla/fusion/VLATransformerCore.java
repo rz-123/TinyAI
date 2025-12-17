@@ -2,9 +2,9 @@ package io.leavesfly.tinyai.vla.fusion;
 
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.func.Variable;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.layer.dnn.LinearLayer;
-import io.leavesfly.tinyai.nnet.v1.layer.norm.LayerNorm;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.norm.LayerNorm;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +15,7 @@ import java.util.List;
  * 
  * @author TinyAI
  */
-public class VLATransformerCore extends Block {
+public class VLATransformerCore extends Module {
     
     private final int hiddenDim;
     private final int numLayers;
@@ -32,7 +32,7 @@ public class VLATransformerCore extends Block {
      * @param numHeads 注意力头数
      */
     public VLATransformerCore(int hiddenDim, int numLayers, int numHeads) {
-        super("VLATransformerCore", null);
+        super("VLATransformerCore");
         this.hiddenDim = hiddenDim;
         this.numLayers = numLayers;
         this.numHeads = numHeads;
@@ -48,7 +48,7 @@ public class VLATransformerCore extends Block {
     }
     
     @Override
-    public void init() {
+    public void resetParameters() {
         // 初始化已在构造函数中完成
     }
     
@@ -63,17 +63,17 @@ public class VLATransformerCore extends Block {
         
         // 通过所有Transformer层
         for (VLATransformerLayer layer : layers) {
-            hidden = layer.layerForward(hidden);
+            hidden = layer.forward(hidden);
         }
         
         // 最终归一化
-        Variable output = finalNorm.layerForward(hidden);
+        Variable output = finalNorm.forward(hidden);
         
         return output;
     }
     
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         return fuse(inputs[0]);
     }
     
@@ -81,18 +81,18 @@ public class VLATransformerCore extends Block {
      * VLA Transformer层
      * 包含自注意力和前馈网络
      */
-    private static class VLATransformerLayer extends Block {
+    private static class VLATransformerLayer extends Module {
         private final int hiddenDim;
         private final int numHeads;
         
         private CrossModalAttention selfAttention;
-        private LinearLayer ffn1;
-        private LinearLayer ffn2;
+        private Linear ffn1;
+        private Linear ffn2;
         private LayerNorm norm1;
         private LayerNorm norm2;
         
         public VLATransformerLayer(int hiddenDim, int numHeads) {
-            super("VLATransformerLayer", null);
+            super("VLATransformerLayer");
             this.hiddenDim = hiddenDim;
             this.numHeads = numHeads;
             
@@ -100,8 +100,8 @@ public class VLATransformerCore extends Block {
             this.selfAttention = new CrossModalAttention(hiddenDim, numHeads);
             
             // 前馈网络
-            this.ffn1 = new LinearLayer("ffn1", hiddenDim, hiddenDim * 4, true);
-            this.ffn2 = new LinearLayer("ffn2", hiddenDim * 4, hiddenDim, true);
+            this.ffn1 = new Linear("ffn1", hiddenDim, hiddenDim * 4, true);
+            this.ffn2 = new Linear("ffn2", hiddenDim * 4, hiddenDim, true);
             
             // 层归一化
             this.norm1 = new LayerNorm("norm1", hiddenDim);
@@ -109,25 +109,25 @@ public class VLATransformerCore extends Block {
         }
         
         @Override
-        public void init() {
+        public void resetParameters() {
             // 初始化已在构造函数中完成
         }
         
         @Override
-        public Variable layerForward(Variable... inputs) {
+        public Variable forward(Variable... inputs) {
             Variable input = inputs[0];
             // 自注意力 + 残差连接
-            Variable normed1 = norm1.layerForward(input);
-            Variable attnOut = selfAttention.layerForward(normed1);
+            Variable normed1 = norm1.forward(input);
+            Variable attnOut = selfAttention.forward(normed1);
             Variable residual1 = new Variable(
                 input.getValue().add(attnOut.getValue())
             );
             
             // 前馈网络 + 残差连接
-            Variable normed2 = norm2.layerForward(residual1);
-            Variable ffn1Out = ffn1.layerForward(normed2);
+            Variable normed2 = norm2.forward(residual1);
+            Variable ffn1Out = ffn1.forward(normed2);
             Variable geluOut = gelu(ffn1Out);
-            Variable ffn2Out = ffn2.layerForward(geluOut);
+            Variable ffn2Out = ffn2.forward(geluOut);
             Variable residual2 = new Variable(
                 residual1.getValue().add(ffn2Out.getValue())
             );

@@ -69,6 +69,8 @@ public class DeepSeekR1RLHFTrainer {
         this.learningRate = learningRate;
         this.rewardWeight = rewardWeight;
         this.qualityWeight = qualityWeight;
+        // 同步学习率到优化器
+        this.optimizer.setLearningRate(learningRate);
         return this;
     }
     

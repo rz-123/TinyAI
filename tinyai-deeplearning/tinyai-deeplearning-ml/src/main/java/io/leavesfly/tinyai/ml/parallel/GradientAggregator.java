@@ -1,7 +1,7 @@
 package io.leavesfly.tinyai.ml.parallel;
 
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,11 +42,11 @@ public class GradientAggregator {
      *
      * @param gradients 参数名到梯度的映射
      */
-    public void submitGradients(Map<String, ParameterV1> gradients) {
+    public void submitGradients(Map<String, Parameter> gradients) {
         aggregationLock.lock();
         try {
             // 累加梯度
-            for (Map.Entry<String, ParameterV1> entry : gradients.entrySet()) {
+            for (Map.Entry<String, Parameter> entry : gradients.entrySet()) {
                 String paramName = entry.getKey();
                 NdArray gradient = entry.getValue().getGrad();
 

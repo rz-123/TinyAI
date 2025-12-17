@@ -2,8 +2,10 @@ package io.leavesfly.tinyai.nl.block;
 
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.Block;
-import io.leavesfly.tinyai.nnet.v1.LayerAble;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 自修改块（SelfModifyingBlock）
@@ -14,7 +16,12 @@ import io.leavesfly.tinyai.nnet.v1.LayerAble;
  * 
  * @author TinyAI Team
  */
-public class SelfModifyingBlock extends Block {
+public class SelfModifyingBlock extends Module {
+    
+    /**
+     * 子模块列表 (替代v1的layers)
+     */
+    private List<Module> subModules;
     
     /**
      * 修改阈值
@@ -42,12 +49,13 @@ public class SelfModifyingBlock extends Block {
     private int modificationCount;
     
     public SelfModifyingBlock(String name, Shape inputShape) {
-        super(name, inputShape);
+        super(name);
         this.modificationThreshold = 0.1f;
         this.performanceHistory = new float[100];
         this.historyIndex = 0;
         this.enableSelfModification = true;
         this.modificationCount = 0;
+        this.subModules = new ArrayList<>();
     }
     
     public SelfModifyingBlock(String name) {
@@ -55,24 +63,24 @@ public class SelfModifyingBlock extends Block {
     }
     
     @Override
-    public void init() {
-        for (LayerAble layer : layers) {
-            layer.init();
+    public void resetParameters() {
+        for (Module module : subModules) {
+            module.resetParameters();
         }
     }
     
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         if (inputs == null || inputs.length == 0) {
             return null;
         }
         
         Variable x = inputs[0];
         
-        if (!layers.isEmpty()) {
-            Variable y = layers.get(0).layerForward(x);
-            for (int i = 1; i < layers.size(); i++) {
-                y = layers.get(i).layerForward(y);
+        if (!subModules.isEmpty()) {
+            Variable y = subModules.get(0).forward(x);
+            for (int i = 1; i < subModules.size(); i++) {
+                y = subModules.get(i).forward(y);
             }
             return y;
         }

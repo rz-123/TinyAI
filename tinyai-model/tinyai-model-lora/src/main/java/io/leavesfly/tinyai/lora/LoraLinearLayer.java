@@ -3,8 +3,8 @@ package io.leavesfly.tinyai.lora;
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.ndarr.Shape;
-import io.leavesfly.tinyai.nnet.v1.Layer;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Module;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.HashMap;
 import java.util.List;
@@ -25,19 +25,25 @@ import java.util.Map;
  * @author leavesfly
  * @version 1.0
  */
-public class LoraLinearLayer extends Layer {
+public class LoraLinearLayer extends Module {
 
     /**
      * 冻结的预训练权重矩阵
      * 形状: (input_dim, output_dim)
      */
-    private final ParameterV1 frozenWeight;
+    private final Parameter frozenWeight;
 
     /**
      * 偏置参数（可选）
      * 形状: (1, output_dim)
      */
-    private final ParameterV1 bias;
+    private final Parameter bias;
+    
+    /**
+     * 输入输出维度
+     */
+    public final int inputDim;
+    public final int outputDim;
 
     /**
      * LoRA适配器
@@ -67,6 +73,8 @@ public class LoraLinearLayer extends Layer {
         super(_name);
 
         this.config = config;
+        this.inputDim = inputDim;
+        this.outputDim = outputDim;
 
         // 验证配置
         config.validate(inputDim, outputDim);
@@ -74,17 +82,13 @@ public class LoraLinearLayer extends Layer {
         // 初始化原始权重矩阵（可以是预训练的权重）
         NdArray initWeight = NdArray.likeRandomN(Shape.of(inputDim, outputDim))
                 .mulNum(Math.sqrt(2.0 / (inputDim + outputDim))); // Xavier初始化
-        this.frozenWeight = new ParameterV1(initWeight);
-        this.frozenWeight.setName("frozen_weight");
-        this.frozenWeight.setRequireGrad(false); // 冻结权重
-        addParam(this.frozenWeight.getName(), this.frozenWeight);
+        this.frozenWeight = new Parameter(initWeight, false);
+        registerParameter("frozen_weight", this.frozenWeight);
 
         // 初始化偏置项
         if (needBias) {
-            this.bias = new ParameterV1(NdArray.zeros(Shape.of(1, outputDim)));
-            this.bias.setName("bias");
-            this.bias.setRequireGrad(!config.isEnableBias()); // 根据配置决定是否训练偏置
-            addParam(this.bias.getName(), this.bias);
+            this.bias = new Parameter(NdArray.zeros(Shape.of(1, outputDim)), !config.isEnableBias());
+            registerParameter("bias", this.bias);
         } else {
             this.bias = null;
         }
@@ -93,8 +97,8 @@ public class LoraLinearLayer extends Layer {
         this.loraAdapter = new LoraAdapter(inputDim, outputDim, config);
 
         // 添加LoRA参数到层参数中
-        addParam("lora_A", this.loraAdapter.getMatrixA());
-        addParam("lora_B", this.loraAdapter.getMatrixB());
+        registerParameter("lora_A", this.loraAdapter.getMatrixA());
+        registerParameter("lora_B", this.loraAdapter.getMatrixB());
     }
 
     /**
@@ -112,22 +116,20 @@ public class LoraLinearLayer extends Layer {
 
         int inputDim = pretrainedWeight.getShape().getDimension(0);
         int outputDim = pretrainedWeight.getShape().getDimension(1);
+        this.inputDim = inputDim;
+        this.outputDim = outputDim;
 
         // 验证配置
         config.validate(inputDim, outputDim);
 
         // 使用预训练权重并冻结
-        this.frozenWeight = new ParameterV1(pretrainedWeight);
-        this.frozenWeight.setName("frozen_weight");
-        this.frozenWeight.setRequireGrad(false);
-        addParam(this.frozenWeight.getName(), this.frozenWeight);
+        this.frozenWeight = new Parameter(pretrainedWeight, false);
+        registerParameter("frozen_weight", this.frozenWeight);
 
         // 处理偏置项
         if (pretrainedBias != null) {
-            this.bias = new ParameterV1(pretrainedBias);
-            this.bias.setName("bias");
-            this.bias.setRequireGrad(config.isEnableBias());
-            addParam(this.bias.getName(), this.bias);
+            this.bias = new Parameter(pretrainedBias, config.isEnableBias());
+            registerParameter("bias", this.bias);
         } else {
             this.bias = null;
         }
@@ -136,17 +138,17 @@ public class LoraLinearLayer extends Layer {
         this.loraAdapter = new LoraAdapter(inputDim, outputDim, config);
 
         // 添加LoRA参数
-        addParam("lora_A", this.loraAdapter.getMatrixA());
-        addParam("lora_B", this.loraAdapter.getMatrixB());
+        registerParameter("lora_A", this.loraAdapter.getMatrixA());
+        registerParameter("lora_B", this.loraAdapter.getMatrixB());
     }
 
     @Override
-    public void init() {
+    public void resetParameters() {
         // 参数已在构造函数中初始化
     }
 
     @Override
-    public Variable layerForward(Variable... inputs) {
+    public Variable forward(Variable... inputs) {
         Variable input = inputs[0];
 
         // 1. 计算原始线性变换: input * W_frozen
@@ -194,7 +196,7 @@ public class LoraLinearLayer extends Layer {
      */
     public void freezeOriginalWeights() {
         this.freezeOriginalWeights = true;
-        frozenWeight.setRequireGrad(false);
+        frozenWeight.setRequiresGrad(false);
     }
 
     /**
@@ -202,7 +204,7 @@ public class LoraLinearLayer extends Layer {
      */
     public void unfreezeOriginalWeights() {
         this.freezeOriginalWeights = false;
-        frozenWeight.setRequireGrad(true);
+        frozenWeight.setRequiresGrad(true);
     }
 
     /**
@@ -245,12 +247,12 @@ public class LoraLinearLayer extends Layer {
     public int getTrainableParameterCount() {
         int count = loraAdapter.getParameterCount();
 
-        if (bias != null && bias.isRequireGrad()) {
-            count += bias.getValue().getShape().size();
+        if (bias != null && bias.requiresGrad()) {
+            count += bias.data().getShape().size();
         }
 
         if (!freezeOriginalWeights) {
-            count += frozenWeight.getValue().getShape().size();
+            count += frozenWeight.data().getShape().size();
         }
 
         return count;
@@ -262,10 +264,10 @@ public class LoraLinearLayer extends Layer {
      * @return 总参数数量
      */
     public int getTotalParameterCount() {
-        int count = frozenWeight.getValue().getShape().size() + loraAdapter.getParameterCount();
+        int count = frozenWeight.data().getShape().size() + loraAdapter.getParameterCount();
 
         if (bias != null) {
-            count += bias.getValue().getShape().size();
+            count += bias.data().getShape().size();
         }
 
         return count;
@@ -313,7 +315,7 @@ public class LoraLinearLayer extends Layer {
      *
      * @return 冻结权重参数
      */
-    public ParameterV1 getFrozenWeight() {
+    public Parameter getFrozenWeight() {
         return frozenWeight;
     }
 
@@ -322,7 +324,7 @@ public class LoraLinearLayer extends Layer {
      *
      * @return 偏置参数（可能为null）
      */
-    public ParameterV1 getBias() {
+    public Parameter getBias() {
         return bias;
     }
 
@@ -331,8 +333,8 @@ public class LoraLinearLayer extends Layer {
      *
      * @return LoRA参数映射
      */
-    public Map<String, ParameterV1> getLoraParameters() {
-        Map<String, ParameterV1> loraParams = new HashMap<>();
+    public Map<String, Parameter> getLoraParameters() {
+        Map<String, Parameter> loraParams = new HashMap<>();
         loraParams.put(getName() + ".lora_A", loraAdapter.getMatrixA());
         loraParams.put(getName() + ".lora_B", loraAdapter.getMatrixB());
         return loraParams;
@@ -343,8 +345,8 @@ public class LoraLinearLayer extends Layer {
         return String.format(
                 "LoraLinearLayer{name='%s', inputDim=%d, outputDim=%d, config=%s, trainableParams=%d/%d (%.1f%% reduction)}",
                 getName(),
-                getInputShape().getDimension(1),
-                getOutputShape().getDimension(1),
+                inputDim,
+                outputDim,
                 config.toString(),
                 getTrainableParameterCount(),
                 getTotalParameterCount(),
@@ -352,13 +354,5 @@ public class LoraLinearLayer extends Layer {
         );
     }
 
-    @Override
-    public NdArray forward(NdArray... inputs) {
-        return null;
-    }
 
-    @Override
-    public List<NdArray> backward(NdArray yGrad) {
-        return null;
-    }
 }

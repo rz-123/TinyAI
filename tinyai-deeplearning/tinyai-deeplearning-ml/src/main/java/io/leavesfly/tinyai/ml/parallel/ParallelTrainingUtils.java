@@ -4,7 +4,7 @@ import io.leavesfly.tinyai.ml.Model;
 import io.leavesfly.tinyai.ml.exception.TrainingException;
 import io.leavesfly.tinyai.ml.parameter.ParameterOperator;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 import io.leavesfly.tinyai.nnet.v2.core.Module;
 
 import java.io.ByteArrayInputStream;
@@ -65,15 +65,15 @@ public class ParallelTrainingUtils {
         Model copiedModel = new Model(originalModel.getName() + "_copy", originalModule);
         
         // 复制所有参数
-        Map<String, ParameterV1> originalParams = originalModel.getAllParams();
-        Map<String, ParameterV1> copiedParams = copiedModel.getAllParams();
+        Map<String, Parameter> originalParams = originalModel.getAllParams();
+        Map<String, Parameter> copiedParams = copiedModel.getAllParams();
         
-        for (Map.Entry<String, ParameterV1> entry : originalParams.entrySet()) {
+        for (Map.Entry<String, Parameter> entry : originalParams.entrySet()) {
             String paramName = entry.getKey();
-            ParameterV1 originalParam = entry.getValue();
+            Parameter originalParam = entry.getValue();
             
             if (copiedParams.containsKey(paramName)) {
-                ParameterV1 copiedParam = copiedParams.get(paramName);
+                Parameter copiedParam = copiedParams.get(paramName);
                 try {
                     // 使用统一的参数复制接口
                     ParameterOperator.copyParameter(originalParam, copiedParam);
@@ -118,11 +118,11 @@ public class ParallelTrainingUtils {
      * @param aggregatedGradients 聚合后的梯度
      */
     public static void applyAggregatedGradients(Model model, Map<String, NdArray> aggregatedGradients) {
-        Map<String, ParameterV1> modelParams = model.getAllParams();
+        Map<String, Parameter> modelParams = model.getAllParams();
 
-        for (Map.Entry<String, ParameterV1> entry : modelParams.entrySet()) {
+        for (Map.Entry<String, Parameter> entry : modelParams.entrySet()) {
             String paramName = entry.getKey();
-            ParameterV1 parameterV1 = entry.getValue();
+            Parameter parameterV1 = entry.getValue();
 
             // 获取对应的聚合梯度
             NdArray aggregatedGrad = aggregatedGradients.get(paramName);

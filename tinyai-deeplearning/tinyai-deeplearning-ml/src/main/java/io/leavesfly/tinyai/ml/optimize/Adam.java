@@ -2,7 +2,7 @@ package io.leavesfly.tinyai.ml.optimize;
 
 import io.leavesfly.tinyai.ml.Model;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -68,17 +68,17 @@ public class Adam extends Optimizer {
     }
 
     @Override
-    public void updateOne(ParameterV1 parameterV1) {
+    public void updateOne(Parameter parameter) {
         // 检查参数的梯度是否为null，如果为null则跳过更新
-        NdArray grad = parameterV1.getGrad();
+        NdArray grad = parameter.getGrad();
         if (grad == null) {
             return;
         }
 
-        int key = parameterV1.hashCode();
+        int key = parameter.hashCode();
         if (!ms.containsKey(key)) {
-            ms.put(key, NdArray.zeros(parameterV1.getValue().getShape()));
-            vs.put(key, NdArray.zeros(parameterV1.getValue().getShape()));
+            ms.put(key, NdArray.zeros(parameter.getValue().getShape()));
+            vs.put(key, NdArray.zeros(parameter.getValue().getShape()));
         }
         NdArray m = ms.get(key);
         NdArray v = vs.get(key);
@@ -91,7 +91,7 @@ public class Adam extends Optimizer {
         // 为了数值稳定性，使用更大的epsilon值
         NdArray denominator = v.pow(0.5f).add(NdArray.like(v.getShape(), epsilon));
         NdArray delat = m.mulNum(lr()).div(denominator);
-        parameterV1.setValue(parameterV1.getValue().sub(delat));
+        parameter.setValue(parameter.getValue().sub(delat));
 
     }
 

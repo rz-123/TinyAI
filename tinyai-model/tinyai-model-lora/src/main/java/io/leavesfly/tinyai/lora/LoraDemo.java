@@ -104,7 +104,7 @@ public class LoraDemo {
         
         // 测试前向传播
         NdArray input = NdArray.likeRandomN(Shape.of(8, 512)); // batch_size=8
-        Variable output = layer.layerForward(new Variable(input));
+        Variable output = layer.forward(new Variable(input));
         
         System.out.printf("输入形状: %s -> 输出形状: %s\n", 
                          input.getShape(), output.getValue().getShape());
@@ -112,11 +112,11 @@ public class LoraDemo {
         // 演示LoRA开关功能
         System.out.println("\n测试LoRA开关功能:");
         layer.disableLora();
-        Variable outputWithoutLora = layer.layerForward(new Variable(input));
+        Variable outputWithoutLora = layer.forward(new Variable(input));
         System.out.println("LoRA禁用后的输出形状: " + outputWithoutLora.getValue().getShape());
         
         layer.enableLora();
-        Variable outputWithLora = layer.layerForward(new Variable(input));
+        Variable outputWithLora = layer.forward(new Variable(input));
         System.out.println("LoRA启用后的输出形状: " + outputWithLora.getValue().getShape());
         
         // 比较输出差异
@@ -144,7 +144,7 @@ public class LoraDemo {
         
         // 测试前向传播
         NdArray input = NdArray.likeRandomN(Shape.of(32, 784)); // batch_size=32
-        Variable output = model.layerForward(new Variable(input));
+        Variable output = model.forward(new Variable(input));
         
         System.out.printf("模型测试 - 输入: %s -> 输出: %s\n", 
                          input.getShape(), output.getValue().getShape());
@@ -195,7 +195,7 @@ public class LoraDemo {
         
         // 模拟微调前后的性能比较
         NdArray testInput = NdArray.likeRandomN(Shape.of(16, 784));
-        Variable originalOutput = fineTunedModel.layerForward(new Variable(testInput));
+        Variable originalOutput = fineTunedModel.forward(new Variable(testInput));
         
         System.out.printf("微调模型测试 - 输入: %s -> 输出: %s\n", 
                          testInput.getShape(), originalOutput.getValue().getShape());

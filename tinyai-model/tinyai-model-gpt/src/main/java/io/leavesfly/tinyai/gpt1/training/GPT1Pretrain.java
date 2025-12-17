@@ -6,7 +6,7 @@ import io.leavesfly.tinyai.gpt1.GPT1Model;
 import io.leavesfly.tinyai.ml.loss.SoftmaxCrossEntropy;
 import io.leavesfly.tinyai.ml.optimize.SGD;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
 
 import java.io.File;
 import java.io.IOException;
@@ -281,8 +281,8 @@ public class GPT1Pretrain {
         double totalNorm = 0.0;
         
         // 计算梯度范数
-        Map<String, ParameterV1> params = model.getAllParams();
-        for (ParameterV1 param : params.values()) {
+        Map<String, Parameter> params = model.getAllParams();
+        for (Parameter param : params.values()) {
             if (param.getGrad() != null) {
                 NdArray grad = param.getGrad();
                 double norm = grad.mul(grad).sum().getNumber().doubleValue();
@@ -295,7 +295,7 @@ public class GPT1Pretrain {
         // 如果梯度范数超过阈值,进行裁剪
         if (totalNorm > maxGradNorm) {
             float scale = (float) (maxGradNorm / totalNorm);
-            for (ParameterV1 param : params.values()) {
+            for (Parameter param : params.values()) {
                 if (param.getGrad() != null) {
                     NdArray clippedGrad = param.getGrad().mulNum(scale);
                     param.setGrad(clippedGrad);

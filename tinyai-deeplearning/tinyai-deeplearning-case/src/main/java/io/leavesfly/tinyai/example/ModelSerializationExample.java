@@ -6,8 +6,11 @@ import io.leavesfly.tinyai.ml.ModelInfo;
 import io.leavesfly.tinyai.ml.ModelInfoExporter;
 import io.leavesfly.tinyai.ml.ParameterManager;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.ParameterV1;
-import io.leavesfly.tinyai.nnet.v1.block.MlpBlock;
+import io.leavesfly.tinyai.nnet.v2.core.Parameter;
+import io.leavesfly.tinyai.nnet.v2.container.Sequential;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.ReLU;
+
 import io.leavesfly.tinyai.util.Config;
 
 import java.io.File;
@@ -79,10 +82,13 @@ public class ModelSerializationExample {
      */
     private static Model createSampleModel() {
         // 创建一个简单的MLP网络
-        // MlpBlock的构造函数参数: (名称, 批次大小, 激活函数, 层大小...)
         int batchSize = 1;
-        MlpBlock mlpBlock = new MlpBlock("sampleMLP", batchSize, Config.ActiveFunc.ReLU, 10, 64, 32, 1);
-        mlpBlock.init();
+        Sequential mlpBlock = new Sequential("sampleMLP");
+        mlpBlock.add(new Linear("fc1", 10, 64, true));
+        mlpBlock.add(new ReLU("relu1"));
+        mlpBlock.add(new Linear("fc2", 64, 32, true));
+        mlpBlock.add(new ReLU("relu2"));
+        mlpBlock.add(new Linear("fc3", 32, 1, true));
         
         Model model = new Model("SampleModel", mlpBlock);
         
@@ -98,8 +104,8 @@ public class ModelSerializationExample {
      * @param model 要初始化参数的模型
      */
     private static void initializeRandomParameters(Model model) {
-        Map<String, ParameterV1> params = model.getAllParams();
-        for (ParameterV1 param : params.values()) {
+        Map<String, Parameter> params = model.getAllParams();
+        for (Parameter param : params.values()) {
             // 用随机值初始化参数
             NdArray randomArray = NdArray.likeRandomN(param.getValue().getShape());
             param.setValue(randomArray);
@@ -215,7 +221,7 @@ public class ModelSerializationExample {
             System.out.println("  复制后参数是否相同: " + paramsEqual);
             
             // 获取参数统计
-            Map<String, ParameterV1> params = originalModel.getAllParams();
+            Map<String, Parameter> params = originalModel.getAllParams();
             ParameterManager.ParameterStats stats = ParameterManager.getParameterStats(params);
             System.out.println("  参数统计: " + stats);
             

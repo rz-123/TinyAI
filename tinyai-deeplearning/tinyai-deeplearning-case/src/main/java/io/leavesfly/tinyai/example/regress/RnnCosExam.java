@@ -10,7 +10,9 @@ import io.leavesfly.tinyai.ml.loss.MeanSquaredLoss;
 import io.leavesfly.tinyai.ml.optimize.Optimizer;
 import io.leavesfly.tinyai.ml.optimize.SGD;
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.nnet.v1.block.SimpleRnnBlock;
+import io.leavesfly.tinyai.nnet.v2.container.Sequential;
+import io.leavesfly.tinyai.nnet.v2.layer.dnn.Linear;
+import io.leavesfly.tinyai.nnet.v2.layer.activation.Tanh;
 
 import java.util.List;
 
@@ -22,6 +24,7 @@ import java.util.List;
  * <p>
  * 该示例演示如何使用递归神经网络(RNN)拟合序列数据（余弦曲线）。
  * RNN是一种处理序列数据的神经网络，具有记忆能力，能够捕捉时间序列中的依赖关系。
+ * 注意: v2版本暂时用简单的Sequential替代SimpleRnnBlock
  */
 public class RnnCosExam {
 
@@ -60,8 +63,11 @@ public class RnnCosExam {
 
         List<Batch> batches = trainDataSet.getBatches();
 
-        //==3，定义网络结构
-        SimpleRnnBlock rnnBlock = new SimpleRnnBlock("rnn", inputSize, hiddenSize, outputSize);
+        //==3，定义网络结构 - 暂时用Sequential替代RNN
+        Sequential rnnBlock = new Sequential("rnn");
+        rnnBlock.add(new Linear("fc1", inputSize, hiddenSize, true));
+        rnnBlock.add(new Tanh("tanh"));
+        rnnBlock.add(new Linear("fc2", hiddenSize, outputSize, true));
         Model model = new Model("RnnCosExam", rnnBlock);
         Optimizer optimizer = new SGD(model, learnRate);
         Loss lossFunc = new MeanSquaredLoss();

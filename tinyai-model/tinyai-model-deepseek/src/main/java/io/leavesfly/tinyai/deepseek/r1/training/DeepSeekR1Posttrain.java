@@ -87,6 +87,8 @@ public class DeepSeekR1Posttrain {
         this.maxEpochs = maxEpochs;
         this.learningRate = learningRate;
         this.patience = patience;
+        // 同步学习率到优化器
+        this.optimizer.setLearningRate(learningRate);
         return this;
     }
     
