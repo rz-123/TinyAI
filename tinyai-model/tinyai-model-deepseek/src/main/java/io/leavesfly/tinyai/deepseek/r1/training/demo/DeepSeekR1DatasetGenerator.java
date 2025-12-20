@@ -1,84 +1,24 @@
-package io.leavesfly.tinyai.deepseek.r1.training;
-
-import io.leavesfly.tinyai.deepseek.r1.DeepSeekR1Config;
-import io.leavesfly.tinyai.deepseek.r1.DeepSeekR1Model;
+package io.leavesfly.tinyai.deepseek.r1.training.demo;
 
 import java.io.*;
 import java.util.*;
 
 /**
- * DeepSeek-R1完整训练演示 V2版本
+ * DeepSeek-R1数据集生成器
  * 
- * 参考DeepSeekV3TrainDemoV2的实现方式，提供完整的训练流程：
- * 1. 准备真实的教学数据集（适用于教育学习）
- * 2. 预训练阶段 - 基础语言建模训练
- * 3. 后训练阶段 - 任务特定微调
- * 4. 强化学习阶段 - RLHF训练（DeepSeek-R1特色）
- * 5. 推理阶段 - 多种生成策略演示
- * 
- * 改进点：
- * - 使用真实文本数据而非随机数据
- * - 支持从文件加载数据集
- * - 包含数据集自动生成功能
- * - 详细的训练过程说明和日志
- * - 完整的预训练-后训练-强化学习-推理流程
- * 
- * R1特色：
- * - 推理能力增强（Reasoning Enhancement）
- * - 反思机制（Self-Reflection）
- * - 强化学习对齐（RLHF）
- * - 推理过程可视化
+ * 提供预训练、后训练、RLHF和RLVR所需的训练数据集生成功能。
+ * 包含推理、数学、逻辑、编程等领域的教学文本。
  * 
  * @author leavesfly
- * @version 2.0
  */
-public class DeepSeekR1TrainDemoV2 {
-    
-    private static SimpleTokenizer sharedTokenizer = new SimpleTokenizer();
+public class DeepSeekR1DatasetGenerator {
     
     private static final String DATA_DIR = "./data/deepseek_r1_training";
-    private static final String CHECKPOINT_DIR = "./checkpoints/deepseek_r1_v2";
-    
-    public static void main(String[] args) {
-        System.out.println("=".repeat(80));
-        System.out.println("DeepSeek-R1 完整训练与推理演示 V2");
-        System.out.println("适用于教学和学习的小型数据集训练方案");
-        System.out.println("特色：推理增强 + 自我反思 + 强化学习对齐");
-        System.out.println("=".repeat(80));
-        
-        try {
-            // 步骤0: 准备数据集文件
-            prepareDatasets();
-            
-            // 步骤1: 预训练（无监督语言建模）
-            DeepSeekR1Model pretrainedModel = runPretraining();
-            
-            // 步骤2: 后训练/微调（有监督学习）
-            DeepSeekR1Model finetunedModel = runPosttraining(pretrainedModel);
-            
-            // 步骤3: 强化学习训练（RLHF - R1核心特色）
-            DeepSeekR1Model alignedModel = runRLHFTraining(finetunedModel);
-            
-            // 步骤4: 推理测试
-            runInference(alignedModel);
-            
-            System.out.println("\n" + "=".repeat(80));
-            System.out.println("✅ DeepSeek-R1完整训练流程演示成功!");
-            System.out.println("=".repeat(80));
-            
-        } catch (Exception e) {
-            System.err.println("❌ 训练过程出错: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-    
-    // ========== 步骤0: 准备数据集 ==========
     
     /**
-     * 准备训练数据集
-     * 生成pretrain、posttrain和rlhf数据文件
+     * 准备所有训练数据集
      */
-    private static void prepareDatasets() throws IOException {
+    public static void prepareAllDatasets() throws IOException {
         System.out.println("\n" + "=".repeat(80));
         System.out.println("📦 步骤0: 准备训练数据集");
         System.out.println("=".repeat(80));
@@ -89,17 +29,16 @@ public class DeepSeekR1TrainDemoV2 {
             System.out.println("✓ 创建数据目录: " + DATA_DIR);
         }
         
-        // 生成预训练数据集
+        // 生成各类数据集
         generatePretrainDataset();
-        
-        // 生成后训练数据集
         generatePosttrainDataset();
-        
-        // 生成RLHF强化学习数据集（R1特色）
         generateRLHFDataset();
+        generateRLVRDataset();
         
         System.out.println("\n✅ 数据集准备完成!");
     }
+    
+    // ========== 数据集生成方法 ==========
     
     /**
      * 生成预训练数据集
@@ -187,11 +126,31 @@ public class DeepSeekR1TrainDemoV2 {
         System.out.println("  ✓ 数据格式: [REWARD:score] 推理过程");
     }
     
-    // ========== 数据生成方法 ==========
-    
     /**
-     * 生成推理相关文本
+     * 生成RLVR可验证奖励数据集
+     * 包含问题、标准答案和验证类型
      */
+    private static void generateRLVRDataset() throws IOException {
+        System.out.println("\n📝 生成RLVR可验证奖励数据集...");
+        
+        List<String> rlvrTexts = new ArrayList<>();
+        
+        // 生成数学验证数据
+        rlvrTexts.addAll(generateMathVerificationData());
+        
+        // 生成逻辑验证数据
+        rlvrTexts.addAll(generateLogicVerificationData());
+        
+        // 写入文件
+        String rlvrPath = DATA_DIR + "/rlvr_train.txt";
+        writeToFile(rlvrTexts, rlvrPath);
+        System.out.println("  ✓ RLVR训练集: " + rlvrTexts.size() + " 条");
+        System.out.println("  ✓ 保存路径: " + rlvrPath);
+        System.out.println("  ✓ 数据格式: [TYPE:verifier_type] Question | GroundTruth");
+    }
+    
+    // ========== 文本生成方法 ==========
+    
     private static List<String> generateReasoningTexts() {
         return Arrays.asList(
             "Reasoning is the process of drawing logical conclusions from available information",
@@ -222,9 +181,6 @@ public class DeepSeekR1TrainDemoV2 {
         );
     }
     
-    /**
-     * 生成数学相关文本
-     */
     private static List<String> generateMathTexts() {
         return Arrays.asList(
             "Mathematics requires systematic reasoning to solve problems correctly",
@@ -250,9 +206,6 @@ public class DeepSeekR1TrainDemoV2 {
         );
     }
     
-    /**
-     * 生成逻辑推理文本
-     */
     private static List<String> generateLogicTexts() {
         return Arrays.asList(
             "Logic is the systematic study of valid inference patterns",
@@ -274,9 +227,6 @@ public class DeepSeekR1TrainDemoV2 {
         );
     }
     
-    /**
-     * 生成编程相关文本
-     */
     private static List<String> generateCodingTexts() {
         return Arrays.asList(
             "Programming transforms algorithms into executable instructions",
@@ -297,9 +247,6 @@ public class DeepSeekR1TrainDemoV2 {
         );
     }
     
-    /**
-     * 生成深度学习基础文本
-     */
     private static List<String> generateDeepLearningTexts() {
         return Arrays.asList(
             "Deep learning uses neural networks with multiple layers",
@@ -320,9 +267,6 @@ public class DeepSeekR1TrainDemoV2 {
         );
     }
     
-    /**
-     * 生成反思相关文本
-     */
     private static List<String> generateReflectionTexts() {
         return Arrays.asList(
             "Self reflection enables models to evaluate their own outputs",
@@ -343,13 +287,10 @@ public class DeepSeekR1TrainDemoV2 {
         );
     }
     
-    /**
-     * 生成推理问答对（后训练数据）
-     */
     private static List<String> generateReasoningQA() {
         List<String> qa = new ArrayList<>();
         
-        // 数学推理问答 (30条)
+        // 数学推理问答 (15条)
         qa.add("[MATH] Question: What is 15 plus 27? Let me think step by step. First I add the ones: 5 plus 7 equals 12, carry 1. Then tens: 1 plus 2 plus 1 equals 4. Answer: 42");
         qa.add("[MATH] Question: Calculate 8 times 7. Think: I know 8 times 7 equals 56 because 8 times 5 is 40 and 8 times 2 is 16, so 40 plus 16 is 56. Answer: 56");
         qa.add("[MATH] Question: What is half of 48? Reasoning: To find half I divide by 2. 48 divided by 2 equals 24. Answer: 24");
@@ -366,7 +307,7 @@ public class DeepSeekR1TrainDemoV2 {
         qa.add("[MATH] Question: What is 45 plus 55? Think: Both add up to 100 since 45 plus 55 equals 100. Answer: 100");
         qa.add("[MATH] Question: Calculate 72 minus 28. Steps: I can think of it as 72 minus 30 plus 2 equals 44. Answer: 44");
         
-        // 逻辑推理问答 (25条)
+        // 逻辑推理问答 (13条)
         qa.add("[LOGIC] Question: All cats are animals. Tom is a cat. What can we conclude? Reasoning: If all cats are animals and Tom is a cat, then by syllogism Tom must be an animal. Answer: Tom is an animal");
         qa.add("[LOGIC] Question: If it rains then the ground gets wet. It is raining. What follows? Using modus ponens: Given if P then Q and P is true, Q must be true. Answer: The ground is wet");
         qa.add("[LOGIC] Question: If A implies B and B is false, what about A? Reasoning: By modus tollens if B is false and A implies B, then A must be false. Answer: A is false");
@@ -381,7 +322,7 @@ public class DeepSeekR1TrainDemoV2 {
         qa.add("[LOGIC] Question: If today is Saturday, tomorrow is Sunday. Today is Saturday. What is tomorrow? Using modus ponens directly. Answer: Tomorrow is Sunday");
         qa.add("[LOGIC] Question: All prime numbers greater than 2 are odd. Is 7 odd? Think: 7 is prime and greater than 2, so it must be odd. Answer: Yes, 7 is odd");
         
-        // 推理过程问答 (25条)
+        // 推理过程问答 (12条)
         qa.add("[REASONING] Question: How do you solve complex problems? Answer: Break them into smaller parts, solve each part, then combine solutions. This is called problem decomposition");
         qa.add("[REASONING] Question: What is chain of thought reasoning? Answer: It means showing step by step thinking process, making each inference explicit before reaching final conclusion");
         qa.add("[REASONING] Question: Why is self verification important? Answer: Self verification catches errors early, improves accuracy, and builds confidence in the final answer");
@@ -395,7 +336,7 @@ public class DeepSeekR1TrainDemoV2 {
         qa.add("[REASONING] Question: What is backward reasoning? Answer: Starting from the goal and working backward to find what conditions or steps are needed to reach it");
         qa.add("[REASONING] Question: How to avoid reasoning errors? Answer: Check assumptions, verify each step, consider counterexamples, and review the logic chain carefully");
         
-        // 编程推理问答 (20条)
+        // 编程推理问答 (12条)
         qa.add("[CODING] Question: How to find a bug in code? Answer: First reproduce the error, then trace execution step by step, check variable values, and identify where actual differs from expected");
         qa.add("[CODING] Question: What is the time complexity of binary search? Reasoning: Each step halves the search space, so for n elements we need log n steps. Answer: O of log n");
         qa.add("[CODING] Question: Why use recursion? Answer: Recursion naturally expresses problems that have self similar structure, making code more readable and maintainable");
@@ -409,7 +350,7 @@ public class DeepSeekR1TrainDemoV2 {
         qa.add("[CODING] Question: Why use unit tests? Answer: Unit tests verify individual components work correctly, catch bugs early, and enable safe refactoring");
         qa.add("[CODING] Question: What is a race condition? Answer: When program behavior depends on timing of uncontrolled events, leading to unpredictable results");
         
-        // 反思问答 (15条)
+        // 反思问答 (10条)
         qa.add("[REFLECTION] Question: How to verify your answer is correct? Answer: Check each step for errors, try alternative approaches, and verify result satisfies original problem constraints");
         qa.add("[REFLECTION] Question: What to do when reasoning seems wrong? Answer: Stop, review the logic, identify the error, and restart from the correct point with corrected reasoning");
         qa.add("[REFLECTION] Question: How to improve reasoning confidence? Answer: Use multiple approaches, verify intermediate steps, and check that conclusion is consistent with all given information");
@@ -424,14 +365,10 @@ public class DeepSeekR1TrainDemoV2 {
         return qa;
     }
     
-    /**
-     * 生成RLHF强化学习数据
-     * 格式: [REWARD:分数] 推理过程文本
-     */
     private static List<String> generateRLHFReasoningData() {
         List<String> rlhfData = new ArrayList<>();
         
-        // 高奖励的正确推理 (20条, reward 0.8-1.0)
+        // 高奖励的正确推理 (10条, reward 0.8-1.0)
         rlhfData.add("[REWARD:0.95] Question: 5 plus 3. Think: 5 plus 3 equals 8. Verified by counting. Answer: 8. Correct and clear.");
         rlhfData.add("[REWARD:0.90] Question: What is 12 divided by 4? Reasoning: 12 divided by 4 means how many 4s in 12. 4 times 3 is 12. Answer: 3");
         rlhfData.add("[REWARD:0.92] Question: All dogs bark. Rex is a dog. Does Rex bark? Logic: Major premise says all dogs bark. Rex is a dog. Therefore Rex barks. Answer: Yes");
@@ -443,7 +380,7 @@ public class DeepSeekR1TrainDemoV2 {
         rlhfData.add("[REWARD:0.87] Question: 20 minus 8 is? Subtract: Start with 20, take away 8. 20 minus 8 equals 12. Verify: 12 plus 8 is 20. Answer: 12");
         rlhfData.add("[REWARD:0.96] Question: Is 15 odd or even? Check: Odd numbers are not divisible by 2. 15 divided by 2 is 7.5 which is not integer. Answer: 15 is odd");
         
-        // 中等奖励的可接受推理 (15条, reward 0.5-0.7)
+        // 中等奖励的可接受推理 (10条, reward 0.5-0.7)
         rlhfData.add("[REWARD:0.65] Question: 6 plus 7. Answer: 13. Reasoning was brief but correct. Could show more steps.");
         rlhfData.add("[REWARD:0.60] Question: What is 9 times 2? Answer: 18. Correct answer but no reasoning shown.");
         rlhfData.add("[REWARD:0.70] Question: Is a square a rectangle? Answer: Yes because it has four right angles. Partially correct but missing some details.");
@@ -455,7 +392,7 @@ public class DeepSeekR1TrainDemoV2 {
         rlhfData.add("[REWARD:0.72] Question: What comes before 5? Answer: 4. In counting order 4 precedes 5. Correct reasoning.");
         rlhfData.add("[REWARD:0.64] Question: 8 minus 3. Answer: 5. Subtraction gives 5. Could verify by addition.");
         
-        // 低奖励的需改进推理 (15条, reward 0.2-0.4)
+        // 低奖励的需改进推理 (10条, reward 0.2-0.4)
         rlhfData.add("[REWARD:0.25] Question: 7 plus 8. Answer: 14. Error: 7 plus 8 should be 15 not 14. Arithmetic mistake.");
         rlhfData.add("[REWARD:0.30] Question: All cats are pets. Some pets are dogs. Are all cats dogs? Answer: Yes. Error: Invalid syllogism, conclusion does not follow.");
         rlhfData.add("[REWARD:0.35] Question: 5 times 5. Answer: 20. Error: 5 times 5 is 25 not 20. Calculation wrong.");
@@ -470,7 +407,65 @@ public class DeepSeekR1TrainDemoV2 {
         return rlhfData;
     }
     
-    // ========== 文件操作方法 ==========
+    private static List<String> generateMathVerificationData() {
+        List<String> mathData = new ArrayList<>();
+        
+        // 算术运算
+        mathData.add("[TYPE:math] What is 15 + 27? | 42");
+        mathData.add("[TYPE:math] Calculate 8 * 6 | 48");
+        mathData.add("[TYPE:math] What is 100 / 4? | 25");
+        mathData.add("[TYPE:math] 50 - 23 equals? | 27");
+        mathData.add("[TYPE:math] What is 7 * 9? | 63");
+        mathData.add("[TYPE:math] Calculate 144 / 12 | 12");
+        mathData.add("[TYPE:math] 25 + 75 equals? | 100");
+        mathData.add("[TYPE:math] What is 60 - 18? | 42");
+        mathData.add("[TYPE:math] 11 * 11 equals? | 121");
+        mathData.add("[TYPE:math] What is 81 / 9? | 9");
+        
+        // 代数问题
+        mathData.add("[TYPE:math] Solve: 2x + 5 = 13 | 4");
+        mathData.add("[TYPE:math] Solve: 3x - 7 = 14 | 7");
+        mathData.add("[TYPE:math] Solve: x / 2 = 8 | 16");
+        mathData.add("[TYPE:math] Solve: 4x + 3 = 19 | 4");
+        mathData.add("[TYPE:math] Solve: 5x = 35 | 7");
+        
+        // 数值比较
+        mathData.add("[TYPE:math] Which is larger: 15 or 23? | 23");
+        mathData.add("[TYPE:math] Is 42 greater than 38? | true");
+        mathData.add("[TYPE:math] What is the maximum of 7, 12, 5? | 12");
+        
+        // 幂运算
+        mathData.add("[TYPE:math] What is 2^5? | 32");
+        mathData.add("[TYPE:math] Calculate 3^3 | 27");
+        mathData.add("[TYPE:math] What is 10^2? | 100");
+        
+        return mathData;
+    }
+    
+    private static List<String> generateLogicVerificationData() {
+        List<String> logicData = new ArrayList<>();
+        
+        // 布尔逻辑 (可解析为0/1)
+        logicData.add("[TYPE:logic] Is the statement 'true AND false' true or false? | false");
+        logicData.add("[TYPE:logic] Is 'true OR false' true or false? | true");
+        logicData.add("[TYPE:logic] What is NOT true? | false");
+        logicData.add("[TYPE:logic] Is '(true AND true) OR false' true? | true");
+        logicData.add("[TYPE:logic] Is 'false AND false' true or false? | false");
+        logicData.add("[TYPE:logic] Is 'true AND true' true or false? | true");
+        logicData.add("[TYPE:logic] Is 'false OR false' true or false? | false");
+        logicData.add("[TYPE:logic] Is NOT false true? | true");
+        
+        // 矛盾判断 (可解析为0/1)
+        logicData.add("[TYPE:logic] Can 'X is both true and false' be valid? | false");
+        logicData.add("[TYPE:logic] Is 'All A are B and some A are not B' consistent? | false");
+        logicData.add("[TYPE:logic] Is a contradiction always false? | true");
+        logicData.add("[TYPE:logic] Can a statement be both true and false? | false");
+        logicData.add("[TYPE:logic] Is 'P AND NOT P' ever true? | false");
+        
+        return logicData;
+    }
+    
+    // ========== 文件操作 ==========
     
     /**
      * 将文本列表写入文件
@@ -487,7 +482,7 @@ public class DeepSeekR1TrainDemoV2 {
     /**
      * 从文件读取文本
      */
-    private static List<String> readFromFile(String filePath) throws IOException {
+    public static List<String> readFromFile(String filePath) throws IOException {
         List<String> lines = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
             String line;
@@ -498,514 +493,5 @@ public class DeepSeekR1TrainDemoV2 {
             }
         }
         return lines;
-    }
-    
-    // ========== 步骤1: 预训练 ==========
-    
-    /**
-     * 执行预训练
-     */
-    private static DeepSeekR1Model runPretraining() throws IOException {
-        System.out.println("\n" + "=".repeat(80));
-        System.out.println("📚 步骤1: DeepSeek-R1 预训练 (Pretrain) - 无监督语言建模");
-        System.out.println("=".repeat(80));
-        
-        // 1. 读取所有数据用于构建完整词汇表
-        System.out.println("\n📝 加载所有数据以构建词汇表...");
-        String pretrainPath = DATA_DIR + "/pretrain.txt";
-        String posttrainTrainPath = DATA_DIR + "/posttrain_train.txt";
-        String posttrainValPath = DATA_DIR + "/posttrain_val.txt";
-        String rlhfPath = DATA_DIR + "/rlhf_train.txt";
-        
-        List<String> pretrainTexts = readFromFile(pretrainPath);
-        List<String> posttrainTrainTexts = readFromFile(posttrainTrainPath);
-        List<String> posttrainValTexts = readFromFile(posttrainValPath);
-        List<String> rlhfTexts = readFromFile(rlhfPath);
-        
-        System.out.println("  ✓ 预训练数据: " + pretrainTexts.size() + " 条");
-        System.out.println("  ✓ 后训练训练数据: " + posttrainTrainTexts.size() + " 条");
-        System.out.println("  ✓ 后训练验证数据: " + posttrainValTexts.size() + " 条");
-        System.out.println("  ✓ RLHF训练数据: " + rlhfTexts.size() + " 条");
-        
-        // 2. 基于所有数据构建完整词汇表
-        System.out.println("\n📝 构建完整词汇表...");
-        List<String> allTexts = new ArrayList<>();
-        allTexts.addAll(pretrainTexts);
-        allTexts.addAll(posttrainTrainTexts);
-        allTexts.addAll(posttrainValTexts);
-        allTexts.addAll(rlhfTexts);
-        
-        // 遍历所有文本构建词汇表
-        for (String text : allTexts) {
-            String cleanText = removeLabels(text);
-            sharedTokenizer.encode(cleanText);
-        }
-        int vocabSize = sharedTokenizer.getVocabSize();
-        
-        // 冻结词汇表
-        sharedTokenizer.freeze();
-        
-        System.out.println("  ✓ 完整词汇表大小: " + vocabSize);
-        System.out.println("  ✓ 词汇表已冻结,后续不再增加新词");
-        
-        // 3. 创建DeepSeek-R1模型
-        System.out.println("\n📝 创建DeepSeek-R1模型...");
-        DeepSeekR1Config config = DeepSeekR1Config.createTinyConfig();
-        config.setVocabSize(vocabSize);
-        config.setMaxReasoningSteps(2);  // 小规模演示使用较少推理步骤
-        config.setNLayer(2);  // 减少层数加速训练
-        
-        DeepSeekR1Model model = new DeepSeekR1Model("deepseek-r1-pretrain-v2", config);
-        
-        System.out.println("  ✓ 模型配置: Tiny (教学专用)");
-        System.out.println("  ✓ 词汇表大小: " + config.getVocabSize());
-        System.out.println("  ✓ 隐藏维度: " + config.getNEmbd());
-        System.out.println("  ✓ 层数: " + config.getNLayer());
-        System.out.println("  ✓ 注意力头数: " + config.getNHead());
-        System.out.println("  ✓ 最大推理步骤: " + config.getMaxReasoningSteps());
-        System.out.println("  ✓ 质量评分维度: " + config.getQualityScoreDim());
-        
-        // 4. 准备数据集
-        System.out.println("\n📝 准备训练数据集...");
-        // 使用模型配置的最大位置数作为序列长度，确保数据与模型兼容
-        int seqLength = config.getNPositions();
-        DeepSeekR1Dataset dataset = createDatasetFromTexts(
-            pretrainTexts,
-            seqLength,
-            4,  // batch size
-            config.getVocabSize()
-        );
-        
-        System.out.println("  ✓ 训练样本: " + dataset.getSampleCount());
-        System.out.println("  ✓ 批次大小: 4");
-        System.out.println("  ✓ 序列长度: " + seqLength);
-        
-        // 5. 配置训练器
-        System.out.println("\n📝 配置预训练器...");
-        DeepSeekR1Pretrain trainer = new DeepSeekR1Pretrain(model, dataset);
-        // 超小模型需要更大学习率加速收敛
-        trainer.configure(
-            10,         // maxEpochs (增加轮次确保收敛)
-            5e-2f,      // learningRate (小模型用更大学习率)
-            5,          // warmupSteps (减少预热加速训练)
-            1.0f        // maxGradNorm
-        ).setCheckpoint(CHECKPOINT_DIR + "/pretrain", 200);
-        trainer.setLogInterval(50);  // 减少日志输出
-        trainer.configureParallel(true, 4);  // 启用并行训练 (4线程)
-        
-        System.out.println("  ✓ 最大轮次: 30");
-        System.out.println("  ✓ 学习率: 1e-2 (小模型适用)");
-        System.out.println("  ✓ Warmup步数: 5");
-        System.out.println("  ✓ 并行训练: 已启用 (4线程)");
-        
-        // 6. 开始训练
-        System.out.println("\n📝 开始预训练...");
-        System.out.println("-".repeat(80));
-        trainer.train();
-        System.out.println("-".repeat(80));
-        
-        System.out.println("\n✅ 预训练完成!");
-        System.out.println("\n💡 预训练阶段总结:");
-        System.out.println("  - 目标: 学习语言的通用表示和推理基础");
-        System.out.println("  - 任务: 因果语言建模（预测下一个词）");
-        System.out.println("  - 数据: 大规模无标注文本（推理、数学、逻辑）");
-        System.out.println("  - R1特色: 同时学习推理和反思能力");
-        
-        return model;
-    }
-    
-    // ========== 步骤2: 后训练/微调 ==========
-    
-    /**
-     * 执行后训练/微调
-     */
-    private static DeepSeekR1Model runPosttraining(DeepSeekR1Model pretrainedModel) throws IOException {
-        System.out.println("\n" + "=".repeat(80));
-        System.out.println("🎯 步骤2: DeepSeek-R1 后训练/微调 (Posttrain) - 有监督学习");
-        System.out.println("=".repeat(80));
-        
-        // 1. 加载后训练数据
-        System.out.println("\n📝 加载后训练数据...");
-        String trainPath = DATA_DIR + "/posttrain_train.txt";
-        String valPath = DATA_DIR + "/posttrain_val.txt";
-        
-        List<String> trainTexts = readFromFile(trainPath);
-        List<String> valTexts = readFromFile(valPath);
-        
-        System.out.println("  ✓ 训练集: " + trainTexts.size() + " 条");
-        System.out.println("  ✓ 验证集: " + valTexts.size() + " 条");
-        
-        // 2. 准备数据集
-        System.out.println("\n📝 准备后训练数据集...");
-        DeepSeekR1Config config = pretrainedModel.getConfig();
-        
-        DeepSeekR1Dataset trainDataset = createDatasetFromTexts(
-            trainTexts,
-            config.getNPositions(),
-            2,  // batch size
-            config.getVocabSize()
-        );
-        
-        DeepSeekR1Dataset valDataset = createDatasetFromTexts(
-            valTexts,
-            config.getNPositions(),
-            1,  // batch size
-            config.getVocabSize()
-        );
-        
-        System.out.println("  ✓ 训练样本: " + trainDataset.getSampleCount());
-        System.out.println("  ✓ 验证样本: " + valDataset.getSampleCount());
-        
-        // 3. 配置后训练器
-        System.out.println("\n📝 配置后训练器...");
-        DeepSeekR1Posttrain posttrain = new DeepSeekR1Posttrain(
-            pretrainedModel,
-            trainDataset,
-            valDataset
-        );
-        
-        posttrain.configure(
-            3,          // maxEpochs
-            1e-3f,      // learningRate (小数据集用更大学习率加速收敛)
-            2           // patience
-        );
-        
-        System.out.println("  ✓ 最大轮次: 3");
-        System.out.println("  ✓ 学习率: 1e-3");
-        System.out.println("  ✓ 早停耐心值: 2");
-        
-        // 4. 开始后训练
-        System.out.println("\n📝 开始后训练...");
-        System.out.println("-".repeat(80));
-        posttrain.train();
-        System.out.println("-".repeat(80));
-        
-        System.out.println("\n✅ 后训练完成!");
-        System.out.println("\n💡 后训练阶段总结:");
-        System.out.println("  - 目标: 优化推理质量和反思能力");
-        System.out.println("  - 任务: 任务特定的指令跟随");
-        System.out.println("  - 数据: 带任务标签的推理问答对");
-        System.out.println("  - 技巧: 小学习率 + 早停防止过拟合");
-        System.out.println("  - R1特色: 增强链式推理和自我反思");
-        
-        return pretrainedModel;
-    }
-    
-    // ========== 步骤3: 强化学习训练 ==========
-    
-    /**
-     * 执行RLHF强化学习训练
-     * DeepSeek-R1的核心特色
-     */
-    private static DeepSeekR1Model runRLHFTraining(DeepSeekR1Model finetunedModel) throws IOException {
-        System.out.println("\n" + "=".repeat(80));
-        System.out.println("🏆 步骤3: DeepSeek-R1 强化学习训练 (RLHF) - R1核心特色");
-        System.out.println("=".repeat(80));
-        System.out.println("💡 RLHF通过人类反馈优化模型的推理和反思质量");
-        System.out.println("💡 这是DeepSeek-R1区别于其他模型的关键技术");
-        
-        // 1. 加载RLHF数据
-        System.out.println("\n📝 加载RLHF训练数据...");
-        String rlhfPath = DATA_DIR + "/rlhf_train.txt";
-        List<String> rlhfTexts = readFromFile(rlhfPath);
-        
-        System.out.println("  ✓ RLHF样本: " + rlhfTexts.size() + " 条");
-        System.out.println("  ✓ 数据包含: 推理过程 + 人类反馈奖励");
-        
-        // 2. 准备RLHF数据集
-        System.out.println("\n📝 准备RLHF数据集...");
-        DeepSeekR1Config config = finetunedModel.getConfig();
-        
-        DeepSeekR1Dataset rlhfDataset = createRLHFDatasetFromTexts(
-            rlhfTexts,
-            config.getNPositions(),
-            2,  // batch size
-            config.getVocabSize()
-        );
-        
-        System.out.println("  ✓ RLHF训练样本: " + rlhfDataset.getSampleCount());
-        System.out.println("  ✓ 奖励分布: 0.2-1.0 (正确推理获高奖励)");
-        
-        // 3. 配置RLHF训练器
-        System.out.println("\n📝 配置RLHF训练器...");
-        DeepSeekR1RLHFTrainer rlhfTrainer = new DeepSeekR1RLHFTrainer(
-            finetunedModel,
-            rlhfDataset
-        );
-        
-        rlhfTrainer.configure(
-            2,          // maxEpochs
-            5e-4f,      // learningRate
-            1.0f,       // rewardWeight (奖励权重)
-            0.5f        // qualityWeight (质量分数权重)
-        );
-        
-        System.out.println("  ✓ 最大轮次: 2");
-        System.out.println("  ✓ 学习率: 5e-4");
-        System.out.println("  ✓ 奖励权重: 1.0 (人类反馈)");
-        System.out.println("  ✓ 质量权重: 0.5 (模型自评)");
-        
-        // 4. 开始RLHF训练
-        System.out.println("\n📝 开始RLHF强化学习训练...");
-        System.out.println("-".repeat(80));
-        rlhfTrainer.train();
-        System.out.println("-".repeat(80));
-        
-        System.out.println("\n✅ RLHF训练完成!");
-        System.out.println("\n💡 RLHF阶段总结:");
-        System.out.println("  - 目标: 通过人类反馈对齐模型行为");
-        System.out.println("  - 任务: 最大化人类偏好奖励");
-        System.out.println("  - 数据: 带奖励标注的推理样本");
-        System.out.println("  - 技巧: 极小学习率 + 奖励信号引导");
-        System.out.println("  - R1特色: 平衡人类反馈与模型自评质量");
-        System.out.println("\nℹ️ RLHF关键创新:");
-        System.out.println("  - 奖励建模: 学习人类对推理质量的偏好");
-        System.out.println("  - 策略优化: 最大化期望奖励同时保持生成多样性");
-        System.out.println("  - 自我反思: 模型学会评估并改进自己的推理");
-        
-        return finetunedModel;
-    }
-    
-    // ========== 步骤4: 推理测试 ==========
-    
-    /**
-     * 执行推理测试
-     */
-    private static void runInference(DeepSeekR1Model model) {
-        System.out.println("\n" + "=".repeat(80));
-        System.out.println("🚀 步骤4: DeepSeek-R1 推理与文本生成");
-        System.out.println("=".repeat(80));
-        
-        // 1. 创建推理器
-        System.out.println("\n📝 创建推理器...");
-        DeepSeekR1Inference inference = new DeepSeekR1Inference(model);
-        System.out.println("  ✓ 推理器准备完成");
-        
-        // 2. 测试用例
-        String[] prompts = {
-            "Reasoning requires",
-            "Mathematics is",
-            "Logic helps",
-            "Self reflection"
-        };
-        
-        System.out.println("\n📝 执行文本生成测试（带推理过程）...\n");
-        
-        for (int i = 0; i < prompts.length; i++) {
-            String prompt = prompts[i];
-            System.out.println("测试 " + (i + 1) + ": \"" + prompt + "\"");
-            System.out.println("-".repeat(80));
-            
-            try {
-                List<Integer> tokens = sharedTokenizer.encode(prompt);
-                int[] promptIds = tokens.stream().mapToInt(Integer::intValue).toArray();
-                
-                // Greedy解码
-                System.out.println("  策略1 [Greedy贪婪解码]: ");
-                DeepSeekR1Inference.GenerationResult greedyResult = 
-                    inference.generateGreedy(promptIds, 10);
-                String greedyText = sharedTokenizer.decode(greedyResult.tokens);
-                System.out.println("    → " + greedyText);
-                // 调试：显示生成的token详情
-                System.out.print("    Token IDs: ");
-                for (int t : greedyResult.tokens) System.out.print(t + " ");
-                System.out.println("(共" + greedyResult.tokens.length + "个)");
-                
-                // 打印推理统计
-                if (!greedyResult.reasoningSteps.isEmpty()) {
-                    DeepSeekR1Inference.ReasoningStep lastStep = 
-                        greedyResult.reasoningSteps.get(greedyResult.reasoningSteps.size() - 1);
-                    System.out.printf("    推理步骤: %d, 置信度: %.4f, 质量分: %.4f%n",
-                        lastStep.reasoningSteps, lastStep.confidence, lastStep.qualityScore);
-                }
-                
-                // Temperature采样
-                System.out.println("  策略2 [Temperature=0.8]: ");
-                DeepSeekR1Inference.GenerationResult tempResult = 
-                    inference.generateWithTemperature(promptIds, 10, 0.8f);
-                String tempText = sharedTokenizer.decode(tempResult.tokens);
-                System.out.println("    → " + tempText);
-                
-            } catch (Exception e) {
-                System.out.println("  ⚠ 生成失败: " + e.getMessage());
-            }
-            
-            System.out.println();
-        }
-        
-        System.out.println("✅ 推理测试完成!");
-        System.out.println("\n💡 推理阶段总结:");
-        System.out.println("  - 输入: 提示词");
-        System.out.println("  - 处理: 推理增强的自回归生成");
-        System.out.println("  - 输出: 生成文本 + 推理过程");
-        System.out.println("  - 策略: Greedy/Temperature采样");
-        System.out.println("  - R1特色: 每个生成步骤都有推理置信度和质量评分");
-    }
-    
-    // ========== 辅助方法 ==========
-    
-    /**
-     * 从文本创建数据集
-     */
-    private static DeepSeekR1Dataset createDatasetFromTexts(
-            List<String> texts,
-            int maxSeqLength,
-            int batchSize,
-            int vocabSize) {
-        
-        List<int[]> sequences = new ArrayList<>();
-        
-        for (String text : texts) {
-            String cleanText = removeLabels(text);
-            
-            // 编码文本
-            List<Integer> tokens = sharedTokenizer.encode(cleanText);
-            
-            // 转换为数组
-            int[] sequence = tokens.stream().mapToInt(Integer::intValue).toArray();
-            
-            // 截断或填充到maxSeqLength
-            int[] paddedSeq = new int[maxSeqLength];
-            Arrays.fill(paddedSeq, SimpleTokenizer.PAD_TOKEN_ID);
-            int copyLen = Math.min(sequence.length, maxSeqLength);
-            System.arraycopy(sequence, 0, paddedSeq, 0, copyLen);
-            
-            sequences.add(paddedSeq);
-        }
-        
-        return new DeepSeekR1Dataset(sequences, maxSeqLength, batchSize, true);
-    }
-    
-    /**
-     * 从RLHF文本创建数据集（包含奖励）
-     */
-    private static DeepSeekR1Dataset createRLHFDatasetFromTexts(
-            List<String> texts,
-            int maxSeqLength,
-            int batchSize,
-            int vocabSize) {
-        
-        List<int[]> sequences = new ArrayList<>();
-        List<String> reasoning = new ArrayList<>();
-        List<Float> rewards = new ArrayList<>();
-        
-        for (String text : texts) {
-            // 提取奖励值
-            float reward = extractReward(text);
-            String cleanText = removeLabels(text);
-            
-            // 编码文本
-            List<Integer> tokens = sharedTokenizer.encode(cleanText);
-            
-            // 转换为数组
-            int[] sequence = tokens.stream().mapToInt(Integer::intValue).toArray();
-            
-            // 截断或填充
-            int[] paddedSeq = new int[maxSeqLength];
-            Arrays.fill(paddedSeq, SimpleTokenizer.PAD_TOKEN_ID);
-            int copyLen = Math.min(sequence.length, maxSeqLength);
-            System.arraycopy(sequence, 0, paddedSeq, 0, copyLen);
-            
-            sequences.add(paddedSeq);
-            reasoning.add(cleanText);
-            rewards.add(reward);
-        }
-        
-        return new DeepSeekR1Dataset(sequences, reasoning, rewards, 
-                                     maxSeqLength, batchSize, true);
-    }
-    
-    /**
-     * 提取奖励值
-     */
-    private static float extractReward(String text) {
-        if (text.startsWith("[REWARD:")) {
-            int endIdx = text.indexOf("]");
-            if (endIdx > 8) {
-                try {
-                    return Float.parseFloat(text.substring(8, endIdx));
-                } catch (NumberFormatException e) {
-                    return 0.5f;  // 默认中等奖励
-                }
-            }
-        }
-        return 0.5f;
-    }
-    
-    /**
-     * 移除标签
-     */
-    private static String removeLabels(String text) {
-        // 移除任务类型标签 [MATH] [LOGIC] [REASONING] [CODING] [REFLECTION]
-        // 移除奖励标签 [REWARD:x.xx]
-        return text.replaceFirst("^\\[REWARD:[\\d.]+\\]\\s*", "")
-                   .replaceFirst("^\\[\\w+\\]\\s*", "");
-    }
-    
-    /**
-     * 简单分词器
-     */
-    static class SimpleTokenizer {
-        private final Map<String, Integer> vocab;
-        private final Map<Integer, String> reverseVocab;
-        private int nextId;
-        private boolean frozen;
-        
-        public static final int PAD_TOKEN_ID = 0;
-        
-        public SimpleTokenizer() {
-            this.vocab = new HashMap<>();
-            this.reverseVocab = new HashMap<>();
-            this.nextId = 1;
-            this.frozen = false;
-            // 预注册PAD token
-            this.vocab.put("<PAD>", PAD_TOKEN_ID);
-            this.reverseVocab.put(PAD_TOKEN_ID, "<PAD>");
-        }
-        
-        public List<Integer> encode(String text) {
-            String[] words = text.toLowerCase()
-                .replaceAll("[^a-z0-9\\s]", " ")
-                .split("\\s+");
-            
-            List<Integer> tokens = new ArrayList<>();
-            for (String word : words) {
-                if (word.isEmpty()) continue;
-                
-                if (!vocab.containsKey(word)) {
-                    if (!frozen) {
-                        vocab.put(word, nextId);
-                        reverseVocab.put(nextId, word);
-                        nextId++;
-                    } else {
-                        // 冻结后使用UNK token (id=1)
-                        tokens.add(1);
-                        continue;
-                    }
-                }
-                tokens.add(vocab.get(word));
-            }
-            return tokens;
-        }
-        
-        public String decode(int[] tokens) {
-            StringBuilder sb = new StringBuilder();
-            for (int token : tokens) {
-                if (token == PAD_TOKEN_ID) continue;
-                if (reverseVocab.containsKey(token)) {
-                    if (sb.length() > 0) sb.append(" ");
-                    sb.append(reverseVocab.get(token));
-                }
-            }
-            return sb.toString();
-        }
-        
-        public int getVocabSize() {
-            return nextId;
-        }
-        
-        public void freeze() {
-            this.frozen = true;
-        }
     }
 }

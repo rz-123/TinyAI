@@ -1,7 +1,6 @@
-package io.leavesfly.tinyai.deepseek.r1.training;
+package io.leavesfly.tinyai.deepseek.r1.training.dataset;
 
 import io.leavesfly.tinyai.ndarr.NdArray;
-import io.leavesfly.tinyai.ndarr.Shape;
 
 import java.util.ArrayList;
 import java.util.Collections;
