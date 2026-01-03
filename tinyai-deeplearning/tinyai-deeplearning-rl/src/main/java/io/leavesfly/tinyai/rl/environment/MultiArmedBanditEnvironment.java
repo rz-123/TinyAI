@@ -113,8 +113,8 @@ public class MultiArmedBanditEnvironment extends Environment {
             throw new IllegalStateException("环境已结束，请先调用reset()");
         }
         
-        // 获取选择的臂
-        int armIndex = (int) action.getValue().get(0);
+        // 获取选择的臂（使用getNumber()避免计算图断裂）
+        int armIndex = action.getValue().getNumber().intValue();
         if (armIndex < 0 || armIndex >= actionDim) {
             throw new IllegalArgumentException("无效的动作: " + armIndex);
         }
@@ -173,7 +173,8 @@ public class MultiArmedBanditEnvironment extends Environment {
             return false;
         }
         
-        int armIndex = (int) action.getValue().get(0);
+        // 使用getNumber()避免计算图断裂
+        int armIndex = action.getValue().getNumber().intValue();
         return armIndex >= 0 && armIndex < actionDim;
     }
     

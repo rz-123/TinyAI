@@ -77,7 +77,8 @@ public abstract class BanditAgent extends Agent {
      */
     @Override
     public void learn(Experience experience) {
-        int actionIndex = (int) experience.getAction().getValue().get(0);
+        // 使用getNumber()方法替代get()，虽然这里是多臂老虎机，不需要计算图
+        int actionIndex = experience.getAction().getValue().getNumber().intValue();
         float reward = experience.getReward();
         
         updateStatistics(actionIndex, reward);

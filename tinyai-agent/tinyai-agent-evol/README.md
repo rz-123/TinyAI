@@ -1,4 +1,4 @@
-# TinyAI Agent Evol 自进化智能体系统 (LLM增强版)
+# TinyAI Agent Evol 自进化智能体系统
 
 [![Java Version](https://img.shields.io/badge/Java-17+-blue.svg)](https://openjdk.org/projects/jdk/17/)
 [![Maven](https://img.shields.io/badge/Maven-3.6+-blue.svg)](https://maven.apache.org/)

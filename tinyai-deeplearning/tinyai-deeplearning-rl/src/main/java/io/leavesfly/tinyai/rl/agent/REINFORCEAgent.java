@@ -216,14 +216,15 @@ public class REINFORCEAgent extends Agent {
      * @return 对数概率
      */
     private Variable computeLogProbability(Variable probabilities, int action) {
-        NdArray probArray = probabilities.getValue();
-        float prob = probArray.get(0, action);
+        // 使用indexSelect提取指定动作的概率，保持计算图连通
+        Variable indexVar = new Variable(NdArray.of(new float[]{action}));
+        Variable selectedProb = probabilities.indexSelect(1, indexVar);
         
-        // 避免log(0)
-        prob = Math.max(prob, 1e-8f);
-        float logProb = (float) Math.log(prob);
-        
-        return new Variable(NdArray.of(logProb));
+        // 使用Variable的log操作，保持计算图
+        // 为避免log(0)，添加小常数
+        Variable epsilon = new Variable(NdArray.of(1e-8f));
+        Variable clippedProb = selectedProb.add(epsilon);
+        return clippedProb.log();
     }
     
     @Override
@@ -258,14 +259,14 @@ public class REINFORCEAgent extends Agent {
         List<Float> returns = computeReturns(episodeRewards);
         
         // 计算基线（如果使用）
-        List<Float> baselines = null;
+        List<Variable> baselinesVar = null;
         if (useBaseline) {
-            baselines = computeBaselines();
+            baselinesVar = computeBaselinesVariable();
             updateBaseline(returns);
         }
         
         // 更新策略
-        updatePolicy(returns, baselines);
+        updatePolicyVariable(returns, baselinesVar);
         
         // 更新统计
         updateStatistics(returns);
@@ -297,6 +298,24 @@ public class REINFORCEAgent extends Agent {
     
     /**
      * 计算基线值
+     * 
+     * @return 基线值序列
+     */
+    private List<Variable> computeBaselinesVariable() {
+        List<Variable> baselines = new ArrayList<>();
+        
+        for (Experience experience : episodeExperiences) {
+            Variable state = experience.getState();
+            Variable baselineValue = baselineModel.forward(state);
+            // 保持Variable类型，不提取数值
+            baselines.add(baselineValue);
+        }
+        
+        return baselines;
+    }
+    
+    /**
+     * 计算基线值（数值版本，用于非训练场景）
      * 
      * @return 基线值序列
      */
@@ -351,6 +370,42 @@ public class REINFORCEAgent extends Agent {
     private Variable computeMSELoss(Variable predicted, Variable target) {
         Variable diff = predicted.sub(target);
         return diff.mul(diff);
+    }
+    
+    /**
+     * 更新策略网络（Variable版本，保持计算图）
+     * 
+     * @param returns 回报序列
+     * @param baselines 基线Variable序列（可为null）
+     */
+    private void updatePolicyVariable(List<Float> returns, List<Variable> baselines) {
+        float totalPolicyLoss = 0.0f;
+        
+        for (int i = 0; i < episodeLogProbs.size(); i++) {
+            Variable logProb = episodeLogProbs.get(i);
+            Variable returnVar = new Variable(NdArray.of(returns.get(i)));
+            
+            // 计算优势函数（保持Variable类型）
+            Variable advantageVar = returnVar;
+            if (baselines != null) {
+                advantageVar = returnVar.sub(baselines.get(i));
+            }
+            
+            // 策略梯度：-log(π(a|s)) * A
+            // 取负号：因为我们要最大化期望回报，但优化器是最小化损失
+            Variable negAdvantage = advantageVar.mul(new Variable(NdArray.of(-1.0f)));
+            Variable policyLoss = logProb.mul(negAdvantage);
+            
+            // 反向传播
+            model.clearGrads();
+            policyLoss.backward();
+            policyOptimizer.update();
+            
+            totalPolicyLoss += policyLoss.getValue().getNumber().floatValue();
+        }
+        
+        // 更新策略损失统计
+        averagePolicyLoss = totalPolicyLoss / episodeLogProbs.size();
     }
     
     /**

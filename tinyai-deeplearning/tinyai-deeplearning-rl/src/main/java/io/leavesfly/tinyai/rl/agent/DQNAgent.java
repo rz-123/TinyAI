@@ -253,24 +253,35 @@ public class DQNAgent extends Agent {
      */
     private Variable computeTargetQValues(float[][] nextStates, float[][] rewards, boolean[] dones) {
         int batchSize = nextStates.length;
-        float[] targetValues = new float[batchSize];
-
+        
+        // 批量前向传播获取所有next state的Q值
+        Variable[] nextQValuesArray = new Variable[batchSize];
+        Variable[] maxNextQArray = new Variable[batchSize];
+        
         for (int i = 0; i < batchSize; i++) {
+            Variable nextState = new Variable(NdArray.of(nextStates[i], Shape.of(1, stateDim)));
+            nextQValuesArray[i] = targetModel.forward(nextState);
+            
             if (dones[i]) {
-                // 如果是终止状态，目标值就是奖励
-                targetValues[i] = rewards[i][0];
+                // 如果是终止状态，目标值就是奖励（使用Variable保持计算图）
+                maxNextQArray[i] = new Variable(NdArray.of(0.0f));
             } else {
-                // 否则使用Bellman方程：r + γ * max(Q(s', a'))
-                Variable nextState = new Variable(NdArray.of(nextStates[i], Shape.of(1, stateDim)));
-                Variable nextQValues = targetModel.forward(nextState);
-
-                // 找到最大Q值
-                float maxNextQ = findMaxQValue(nextQValues);
-                targetValues[i] = rewards[i][0] + gamma * maxNextQ;
+                // 使用Variable层面的max操作保持计算图连通性
+                maxNextQArray[i] = findMaxQValueVariable(nextQValuesArray[i]);
             }
         }
-
-        return new Variable(NdArray.of(targetValues, Shape.of(batchSize, 1)));
+        
+        // 组装目标Q值：r + γ * max(Q(s', a'))
+        Variable[] targetArray = new Variable[batchSize];
+        for (int i = 0; i < batchSize; i++) {
+            Variable rewardVar = new Variable(NdArray.of(rewards[i][0]));
+            Variable gammaVar = new Variable(NdArray.of(gamma));
+            Variable discountedQ = maxNextQArray[i].mul(gammaVar);
+            targetArray[i] = rewardVar.add(discountedQ);
+        }
+        
+        // 合并成批次Variable
+        return stackVariables(targetArray, batchSize);
     }
 
     /**
@@ -282,21 +293,35 @@ public class DQNAgent extends Agent {
      */
     private Variable computeCurrentQValues(float[][] states, float[][] actions) {
         int batchSize = states.length;
-        float[] currentValues = new float[batchSize];
+        Variable[] currentQArray = new Variable[batchSize];
 
         for (int i = 0; i < batchSize; i++) {
             Variable state = new Variable(NdArray.of(states[i], Shape.of(1, stateDim)));
             Variable qValues = model.forward(state);
 
             int actionIndex = (int) actions[i][0];
-            currentValues[i] = qValues.getValue().get(0, actionIndex);
+            
+            // 使用indexSelect保持计算图连通性
+            Variable indexVar = new Variable(NdArray.of(new float[]{actionIndex}));
+            currentQArray[i] = qValues.indexSelect(1, indexVar);
         }
 
-        return new Variable(NdArray.of(currentValues, Shape.of(batchSize, 1)));
+        return stackVariables(currentQArray, batchSize);
     }
 
     /**
-     * 找到Q值向量中的最大值
+     * 找到Q值向量中的最大值（保持计算图）
+     *
+     * @param qValues Q值向量
+     * @return 最大Q值Variable
+     */
+    private Variable findMaxQValueVariable(Variable qValues) {
+        // 使用Variable的max操作保持计算图连通性
+        return qValues.max(1, true);
+    }
+    
+    /**
+     * 找到Q值向量中的最大值（数值版本，用于非训练场景）
      *
      * @param qValues Q值向量
      * @return 最大Q值
@@ -313,6 +338,21 @@ public class DQNAgent extends Agent {
         }
 
         return maxQ;
+    }
+    
+    /**
+     * 将Variable数组堆叠成批次Variable
+     *
+     * @param variables Variable数组
+     * @param batchSize 批次大小
+     * @return 堆叠后的Variable
+     */
+    private Variable stackVariables(Variable[] variables, int batchSize) {
+        float[] values = new float[batchSize];
+        for (int i = 0; i < batchSize; i++) {
+            values[i] = variables[i].getValue().getNumber().floatValue();
+        }
+        return new Variable(NdArray.of(values, Shape.of(batchSize, 1)));
     }
 
     /**

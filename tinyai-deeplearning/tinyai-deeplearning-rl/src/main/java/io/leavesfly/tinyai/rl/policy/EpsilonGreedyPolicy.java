@@ -88,7 +88,9 @@ public class EpsilonGreedyPolicy extends Policy {
     public float getActionProbability(Variable state, Variable action) {
         Variable probs = getActionProbabilities(state);
         int actionIndex = getActionIndex(action);
-        return probs.getValue().get(0, actionIndex);
+        // 这里返回概率数值，不需要保持计算图，但使用getNumber()更规范
+        NdArray probArray = probs.getValue();
+        return probArray.get(0, actionIndex);
     }
 
     @Override
