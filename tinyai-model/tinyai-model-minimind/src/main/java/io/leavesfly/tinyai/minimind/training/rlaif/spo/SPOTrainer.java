@@ -2,7 +2,8 @@ package io.leavesfly.tinyai.minimind.training.rlaif.spo;
 
 import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.minimind.model.MiniMindModel;
-import io.leavesfly.tinyai.minimind.training.dpo.RLAIFDataset;
+
+import io.leavesfly.tinyai.minimind.training.dataset.RLAIFDataset;
 import io.leavesfly.tinyai.ml.optimize.Adam;
 import io.leavesfly.tinyai.ndarr.NdArray;
 import io.leavesfly.tinyai.nnet.v2.core.Parameter;

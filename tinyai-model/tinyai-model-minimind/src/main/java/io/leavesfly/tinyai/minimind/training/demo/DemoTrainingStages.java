@@ -1,12 +1,15 @@
 package io.leavesfly.tinyai.minimind.training.demo;
 
-import io.leavesfly.tinyai.func.Variable;
 import io.leavesfly.tinyai.minimind.model.MiniMindConfig;
 import io.leavesfly.tinyai.minimind.model.MiniMindModel;
 import io.leavesfly.tinyai.minimind.tokenizer.MiniMindTokenizer;
 import io.leavesfly.tinyai.minimind.training.PretrainTrainer;
 import io.leavesfly.tinyai.minimind.training.SFTTrainer;
 import io.leavesfly.tinyai.minimind.training.dataset.DPODataset;
+import io.leavesfly.tinyai.minimind.training.dataset.RLAIFDataset;
+import io.leavesfly.tinyai.minimind.training.rlaif.grpo.GRPOConfig;
+import io.leavesfly.tinyai.minimind.training.rlaif.grpo.GRPOTrainer;
+import io.leavesfly.tinyai.minimind.training.rlaif.ppo.ValueNetwork;
 import io.leavesfly.tinyai.minimind.training.dataset.PretrainDataset;
 import io.leavesfly.tinyai.minimind.training.dataset.SFTDataset;
 import io.leavesfly.tinyai.minimind.training.dpo.DPOConfig;
@@ -273,13 +276,13 @@ public class DemoTrainingStages {
     // ========== 步骤5: 强化学习训练 ==========
 
     /**
-     * 执行强化学习训练（RLAIF）
+     * 执行强化学习训练（GRPO）
      */
     public static MiniMindModel runReinforcementLearningTraining(MiniMindModel model) throws IOException {
         System.out.println("\n" + "=".repeat(80));
-        System.out.println("🏆 步骤5: MiniMind 强化学习训练 (Reinforcement Learning)");
+        System.out.println("🏆 步骤5: MiniMind 强化学习训练 (GRPO - Group Relative Policy Optimization)");
         System.out.println("=".repeat(80));
-        System.out.println("💡 使用奖励加权的策略梯度方法优化模型");
+        System.out.println("💡 使用GRPO算法进行组相对策略优化");
 
         // 1. 加载数据
         System.out.println("\n📝 加载强化学习训练数据...");
@@ -287,98 +290,70 @@ public class DemoTrainingStages {
         List<String> rlTexts = readFromFile(rlPath);
         System.out.println("  ✓ RL训练数据: " + rlTexts.size() + " 条");
 
-        // 2. 解析数据
-        System.out.println("\n📝 准备强化学习数据集...");
-        List<String> texts = new ArrayList<>();
-        List<Float> rewards = new ArrayList<>();
-        
-        for (String line : rlTexts) {
-            texts.add(removeRewardLabel(line));
-            rewards.add(extractReward(line));
-        }
-        
-        float avgReward = (float) rewards.stream().mapToDouble(Float::doubleValue).average().orElse(0.0);
-        System.out.println("  ✓ RL样本数: " + texts.size());
-        System.out.println("  ✓ 平均奖励: " + String.format("%.2f", avgReward));
-
-        // 3. 训练配置
+        // 2. 准备RLAIF数据集
+        System.out.println("\n📝 准备RLAIF数据集...");
         MiniMindConfig config = model.getConfig();
-        float learningRate = 1e-3f;
-        int epochs = 2;
-        int logInterval = 10;
+        int batchSize = 2;
+        int numCandidates = 4;  // 每个prompt生成4个候选回答
         
-        System.out.println("\n📝 开始强化学习训练...");
-        System.out.println("  - 算法: 奖励加权策略梯度");
-        System.out.println("  - 学习率: " + learningRate);
-        System.out.println("  - 训练轮次: " + epochs);
-        System.out.println("-".repeat(80));
-
-        // 4. 训练循环
-        Adam optimizer = new Adam(model, learningRate, 0.9f, 0.999f, 1e-8f);
-        SoftmaxCrossEntropy lossFunction = new SoftmaxCrossEntropy();
-        model.setTraining(true);
+        RLAIFDataset dataset = new RLAIFDataset(getSharedTokenizer(), config.getMaxSeqLen(), batchSize);
         
-        int step = 0;
-        int maxSeqLen = config.getMaxSeqLen();
-        MiniMindTokenizer tokenizer = getSharedTokenizer();
-        
-        for (int epoch = 0; epoch < epochs; epoch++) {
-            float epochLoss = 0.0f;
-            int sampleCount = 0;
+        // 解析RL数据: 每行格式为 "[reward:0.8] text"
+        for (String line : rlTexts) {
+            float reward = extractReward(line);
+            String text = removeRewardLabel(line);
             
-            for (int i = 0; i < texts.size(); i++) {
-                String text = texts.get(i);
-                float reward = rewards.get(i);
-                
-                List<Integer> tokenIds = tokenizer.encode(text, true, true);
-                if (tokenIds.size() < 2) continue;
-                
-                int seqLen = Math.min(tokenIds.size() - 1, maxSeqLen - 1);
-                float[] inputData = new float[seqLen];
-                float[] targetData = new float[seqLen];
-                
-                for (int j = 0; j < seqLen; j++) {
-                    inputData[j] = tokenIds.get(j);
-                    targetData[j] = tokenIds.get(j + 1);
-                }
-                
-                Variable input = new Variable(NdArray.of(inputData, Shape.of(1, seqLen)));
-                Variable target = new Variable(NdArray.of(targetData, Shape.of(1, seqLen)));
-                
-                Variable logits = model.predict(input);
-                
-                int[] logitsShape = logits.getValue().getShape().getShapeDims();
-                int totalTokens = logitsShape[0] * logitsShape[1];
-                int vocabSize = logitsShape[2];
-                
-                Variable logitsReshaped = logits.reshape(Shape.of(totalTokens, vocabSize));
-                Variable targetReshaped = target.reshape(Shape.of(totalTokens, 1));
-                
-                Variable loss = lossFunction.loss(targetReshaped, logitsReshaped);
-                Variable weightedLoss = loss.mul(new Variable(NdArray.of(reward)));
-                
-                model.clearGrads();
-                weightedLoss.backward();
-                optimizer.update();
-                weightedLoss.unChainBackward();
-                
-                float lossValue = loss.getValue().getNumber().floatValue();
-                epochLoss += lossValue * reward;
-                sampleCount++;
-                step++;
-                
-                if (step % logInterval == 0) {
-                    System.out.printf("Epoch %d | Step %d | Loss: %.4f | Reward: %.2f%n",
-                        epoch + 1, step, lossValue, reward);
-                }
+            // 简化: 将每个文本作为prompt,生成多个候选(这里用同一个文本模拟)
+            List<String> candidates = new ArrayList<>();
+            float[] rewards = new float[numCandidates];
+            for (int i = 0; i < numCandidates; i++) {
+                candidates.add(text);
+                rewards[i] = reward * (0.8f + i * 0.1f);  // 模拟不同候选的奖励
             }
             
-            float avgLoss = sampleCount > 0 ? epochLoss / sampleCount : 0.0f;
-            System.out.printf("Epoch %d 完成 | 平均加权损失: %.4f%n", epoch + 1, avgLoss);
+            dataset.addSample(text, candidates, rewards);
         }
+        
+        dataset.prepare(true);
+        System.out.println("  ✓ RLAIF样本数: " + dataset.getSampleCount());
+        System.out.println("  ✓ 每组候选数: " + numCandidates);
+        System.out.println("  ✓ 批次数量: " + dataset.getBatchCount());
+
+        // 3. 创建GRPO配置
+        System.out.println("\n📝 配置GRPO参数...");
+        GRPOConfig grpoConfig = new GRPOConfig();
+        grpoConfig.setNumCandidates(numCandidates);
+        grpoConfig.setGroupSize(2);
+        grpoConfig.setActorLearningRate(1e-4f);
+        grpoConfig.setClipEpsilon(0.2f);
+        grpoConfig.setGrpoEpochs(2);
+        grpoConfig.setNormalizeAdvantage(true);
+        grpoConfig.setUseGroupContrast(true);
+        
+        System.out.println("  ✓ 候选数量: " + grpoConfig.getNumCandidates());
+        System.out.println("  ✓ 组大小: " + grpoConfig.getGroupSize());
+        System.out.println("  ✓ Actor学习率: " + grpoConfig.getActorLearningRate());
+        System.out.println("  ✓ Clip范围: " + grpoConfig.getClipEpsilon());
+        System.out.println("  ✓ GRPO轮数: " + grpoConfig.getGrpoEpochs());
+
+        // 4. 创建Critic网络(可选,这里简化为null)
+        System.out.println("\n📝 创建训练器...");
+        ValueNetwork critic = null;  // 简化版本不使用critic
+        
+        // 5. 创建GRPO训练器
+        GRPOTrainer trainer = new GRPOTrainer(model, critic, dataset, grpoConfig);
+        trainer.configure(2, 10);  // 2 epochs, 每10步打印一次
+
+        // 6. 训练
+        System.out.println("\n📝 开始GRPO训练...");
+        System.out.println("  - 算法: Group Relative Policy Optimization");
+        System.out.println("  - 训练轮次: 2 epochs");
+        System.out.println("-".repeat(80));
+        
+        trainer.train();
 
         System.out.println("-".repeat(80));
-        System.out.println("\n✅ 强化学习训练完成!");
+        System.out.println("\n✅ GRPO强化学习训练完成!");
         printRLSummary();
 
         return model;

@@ -53,8 +53,8 @@ graph LR
 ```mermaid
 graph TB
     subgraph Input["输入层"]
-        TokenIds[Token IDs<br/>[batch, seq_len]]
-        TokenEmb[Token Embedding<br/>维度: 512]
+        TokenIds[Token IDs - batch, seq_len]
+        TokenEmb[Token Embedding - 维度: 512]
     end
     
     subgraph Transformer["Transformer 层 × 8"]
@@ -68,8 +68,8 @@ graph TB
     
     subgraph Output["输出层"]
         FinalNorm[Final LayerNorm]
-        LMHead[LM Head<br/>Linear: 512 → 6400]
-        Logits[Logits<br/>[batch, seq_len, vocab]]
+        LMHead[LM Head - Linear: 512 to 6400]
+        Logits[Logits - batch, seq_len, vocab]
     end
     
     TokenIds --> TokenEmb
@@ -77,10 +77,6 @@ graph TB
     LayerN --> FinalNorm
     FinalNorm --> LMHead
     LMHead --> Logits
-    
-    style Input fill:#e1f5ff
-    style Transformer fill:#fff4e1
-    style Output fill:#ffe1e1
 ```
 
 ### 模型配置参数
@@ -202,34 +198,34 @@ output = x4
 
 ```mermaid
 graph TB
-    X[输入 X<br/>[batch, seq, 512]]
+    X[输入 X - batch, seq, 512]
     
     subgraph Projection["线性投影"]
-        Q[Q = X·W_q<br/>[batch, seq, 512]]
-        K[K = X·W_k<br/>[batch, seq, 512]]
-        V[V = X·W_v<br/>[batch, seq, 512]]
+        Q[Q = X·W_q - batch, seq, 512]
+        K[K = X·W_k - batch, seq, 512]
+        V[V = X·W_v - batch, seq, 512]
     end
     
     subgraph RoPE["RoPE 位置编码"]
-        Q_rope[Q_rope<br/>旋转位置编码]
-        K_rope[K_rope<br/>旋转位置编码]
+        Q_rope[Q_rope 旋转位置编码]
+        K_rope[K_rope 旋转位置编码]
     end
     
     subgraph MultiHead["多头分割"]
-        Q_split[Q: [batch, 16, seq, 32]]
-        K_split[K: [batch, 16, seq, 32]]
-        V_split[V: [batch, 16, seq, 32]]
+        Q_split[Q: batch, 16, seq, 32]
+        K_split[K: batch, 16, seq, 32]
+        V_split[V: batch, 16, seq, 32]
     end
     
     subgraph Attention["Scaled Dot-Product"]
-        Score[Score = Q·K^T / √32]
+        Score[Score = Q·KT / sqrt32]
         Mask[Causal Mask]
         Softmax[Softmax]
         Attn[Attn·V]
     end
     
     subgraph Output["输出投影"]
-        Concat[Concat Heads<br/>[batch, seq, 512]]
+        Concat[Concat Heads - batch, seq, 512]
         O[O = Concat·W_o]
     end
     
@@ -766,15 +762,15 @@ graph TB
     Input[输入 x]
     
     subgraph Router["路由网络"]
-        Gate[门控网络<br/>softmax(W_gate·x)]
+        Gate[门控网络 softmax W_gate x]
         TopK[Top-2 选择]
     end
     
-    subgraph Experts["专家网络 (4个)"]
-        E1[Expert 1<br/>FFN]
-        E2[Expert 2<br/>FFN]
-        E3[Expert 3<br/>FFN]
-        E4[Expert 4<br/>FFN]
+    subgraph Experts["专家网络 4个"]
+        E1[Expert 1 FFN]
+        E2[Expert 2 FFN]
+        E3[Expert 3 FFN]
+        E4[Expert 4 FFN]
     end
     
     subgraph Combine["加权组合"]
@@ -785,18 +781,14 @@ graph TB
     Input --> Gate
     Gate --> TopK
     
-    TopK -.选择.-> E1
-    TopK -.选择.-> E3
+    TopK -.-> E1
+    TopK -.-> E3
     
     E1 --> Weight
     E3 --> Weight
     Weight --> Sum
     
     Sum --> Output[输出]
-    
-    style Router fill:#e1f5ff
-    style Experts fill:#fff4e1
-    style Combine fill:#ffe1e1
 ```
 
 ### MoE 配置
